@@ -96,6 +96,10 @@ class Prefs(ctx: Context) {
     var dockCount: Int get() = sp.getInt("dockCount", 2); set(v) = sp.edit { putInt("dockCount", v) }
     var dockOpacity: Int get() = sp.getInt("dockOpacity", 75); set(v) = sp.edit { putInt("dockOpacity", v) }
     var docked: Boolean get() = sp.getBoolean("docked", false); set(v) = sp.edit { putBoolean("docked", v) }
+    /** Card size from the corner grip, in dp; -1 = the default (85% of the width, 60% of the height). */
+    var cardWidth: Int get() = sp.getInt("cardWidth", -1); set(v) = sp.edit { putInt("cardWidth", v) }
+    var listHeight: Int get() = sp.getInt("listHeight", -1); set(v) = sp.edit { putInt("listHeight", v) }
+    fun resetSize() = sp.edit { remove("cardWidth"); remove("listHeight") }
     var onBoot: Boolean get() = sp.getBoolean("onBoot", false); set(v) = sp.edit { putBoolean("onBoot", v) }
     var y: Int get() = sp.getInt("y", -1); set(v) = sp.edit { putInt("y", v) }
     var right: Boolean get() = sp.getBoolean("right", true); set(v) = sp.edit { putBoolean("right", v) }

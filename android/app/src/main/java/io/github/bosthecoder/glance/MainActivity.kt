@@ -87,6 +87,9 @@ class MainActivity : ComponentActivity() {
         choice("Heads-up before a change", listOf(2, 5, 10), { "$it min" }, prefs.headsUp) { prefs.headsUp = it }
         toggle("Vibrate on reminders", prefs.vibrate) { prefs.vibrate = it }
         toggle("Start when the phone boots", prefs.onBoot) { prefs.onBoot = it }
+        list.addView(button("Reset size", 0xFF1A1A1E.toInt()) { prefs.resetSize() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
+        })
 
         list.addView(View(this), LinearLayout.LayoutParams(1, dp(20)))
         val running = OverlayService.running

@@ -104,6 +104,20 @@ class Bar(ctx: Context) : View(ctx) {
     }
 }
 
+/** The card's resize grip: two short diagonal lines in its bottom corner, mirrored for a card on the left edge. */
+class Grip(ctx: Context) : View(ctx) {
+    var onLeftEdge = false; set(v) { field = v; invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66FFFFFF; strokeWidth = ctx.dp(1.5f).toFloat(); strokeCap = Paint.Cap.ROUND }
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat(); val inset = context.dp(5).toFloat()
+        for (k in listOf(context.dp(8), context.dp(14))) {
+            // Bottom-left corner (card on the right edge) by default; flip x for the bottom-right one.
+            fun x(v: Float) = if (onLeftEdge) w - v else v
+            c.drawLine(x(inset), h - inset - k, x(inset + k), h - inset, p)
+        }
+    }
+}
+
 /** ScrollView that stops growing at [maxH]. */
 class MaxScroll(ctx: Context, var maxH: Int) : ScrollView(ctx) {
     override fun onMeasure(w: Int, h: Int) = super.onMeasure(w, MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST))
@@ -160,6 +174,7 @@ class OverlayService : Service() {
     private lateinit var pillBg: GradientDrawable
     private lateinit var cardBg: GradientDrawable
     private lateinit var dock: LinearLayout
+    private lateinit var grip: Grip
     private lateinit var dockBg: GradientDrawable
     private lateinit var nextBox: LinearLayout
     private lateinit var bannerRow: LinearLayout
@@ -184,6 +199,7 @@ class OverlayService : Service() {
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             "y", "right", "docked" -> {}
+            "cardWidth", "listHeight" -> if (!gripping) { scroll.maxH = listH(); showForm(); update() }
             "view" -> applyMode()
             "idleOpacity", "dockOpacity" -> if (faded) { faded = false; fade() }
             else -> soon()
@@ -241,7 +257,7 @@ class OverlayService : Service() {
         super.onConfigurationChanged(newConfig)
         if (!::root.isInitialized) return
         if (expanded) collapse()
-        scroll.maxH = (H * 0.6f).toInt() - dp(48)
+        scroll.maxH = listH()
         showForm()
         lp.y = clampY(lp.y, root.height)
         update()
@@ -308,7 +324,7 @@ class OverlayService : Service() {
             setOnTouchListener { _, e -> full && onTouch(e) }   // Full view: the clock is the drag handle
         }
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll = MaxScroll(this, (H * 0.6f).toInt() - dp(48)).apply { isVerticalScrollBarEnabled = false; addView(body) }
+        scroll = MaxScroll(this, listH()).apply { isVerticalScrollBarEnabled = false; addView(body) }
         card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; background = cardBg; visibility = View.GONE
             setPadding(dp(16), dp(12), dp(16), dp(14))
@@ -317,6 +333,7 @@ class OverlayService : Service() {
 
         dockBg = GradientDrawable().apply { setColor(GLASS); setStroke(dp(1), RIM) }
         dock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = dockBg; visibility = View.GONE }
+        grip = Grip(this).apply { visibility = View.GONE; setOnTouchListener { _, e -> resize(e) } }
 
         root = object : FrameLayout(this) {
             // Full view: any touch, even one the agenda scroll takes, wakes the card and restarts the idle timer.
@@ -331,6 +348,7 @@ class OverlayService : Service() {
             addView(pill, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
             addView(dock, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            addView(grip, FrameLayout.LayoutParams(dp(28), dp(28)))
             setOnTouchListener { _, e -> onTouch(e) }
         }
         lp = WindowManager.LayoutParams(
@@ -343,10 +361,21 @@ class OverlayService : Service() {
 
     private fun side() = Gravity.TOP or if (right) Gravity.RIGHT else Gravity.LEFT
 
-    private fun cardW() = if (full) minOf((W * 0.85f).toInt(), dp(360)) else (W * 0.85f).toInt()
+    private fun cardW() = prefs.cardWidth.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(220), maxOf(dp(220), maxCardW())) }
+        ?: if (full) minOf((W * 0.85f).toInt(), dp(360)) else (W * 0.85f).toInt()
+    private fun maxCardW() = edges().let { W - it.left - it.right }
+    /** The agenda's max height: the grip's, kept on screen, or 60% of the screen. */
+    private fun listH() = prefs.listHeight.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(120), maxOf(dp(120), edges().let { e -> H - e.top - e.bottom - dp(120) })) }
+        ?: ((H * 0.6f).toInt() - dp(48))
 
     /** Side strip width: the readable part plus the back-gesture zone on its edge, so every touch on the text is ours. */
     private fun stripW(): Int { val e = edges(); return dp(DOCK_W) + if (right) e.right else e.left }
+
+    /** Grip in the card's bottom corner on the side away from its edge. */
+    private fun placeGrip() {
+        grip.onLeftEdge = !right
+        grip.layoutParams = (grip.layoutParams as FrameLayout.LayoutParams).apply { gravity = Gravity.BOTTOM or if (right) Gravity.LEFT else Gravity.RIGHT }
+    }
 
     /** Show the pill, the card or the side strip. The alert banner lives in the pill or card, whichever is up. */
     private fun showForm() {
@@ -354,7 +383,9 @@ class OverlayService : Service() {
         (bannerRow.parent as? ViewGroup)?.removeView(bannerRow)
         if (form === card) card.addView(bannerRow, 0) else pill.addView(bannerRow, 0)
         for (v in listOf(pill, card, dock)) v.visibility = if (v === form) View.VISIBLE else View.GONE
-        lp.width = when { docked -> stripW(); expanded -> (W * 0.85f).toInt(); full -> cardW(); else -> WRAP_CONTENT }
+        lp.width = when { docked -> stripW(); expanded || full -> cardW(); else -> WRAP_CONTENT }
+        grip.visibility = if (form === card) View.VISIBLE else View.GONE
+        placeGrip()
         if (docked) {
             // Flush to the edge: round only the inward corners, pad the edge side clear of the gesture zone.
             val r = dp(14).toFloat(); val gesture = lp.width - dp(DOCK_W)
@@ -658,6 +689,7 @@ class OverlayService : Service() {
             right = toRight
             lp.gravity = side()
             lp.x = if (right) W - left - w else left
+            placeGrip()
         }
         lp.y = clampY(lp.y, root.height)
         animX(0)
@@ -669,7 +701,7 @@ class OverlayService : Service() {
         h.removeCallbacks(fadeR); xSpring.cancel()
         pillY = lp.y
         showForm()
-        lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; lp.x = 0
+        lp.gravity = side(); lp.x = 0   // on the pill's edge, so the grip has an inward side
         lp.y = minOf(lp.y, (H * 0.35f).toInt())
         root.alpha = 1f
         render(); update()
@@ -682,6 +714,41 @@ class OverlayService : Service() {
         scroll.scrollTo(0, 0)
         lp.gravity = side(); lp.x = 0; lp.y = pillY
         update(); render()
+    }
+
+    // ---------- resize ----------
+
+    private var gripping = false
+    private var gripX = 0f
+    private var gripY = 0f
+    private var gripW = 0
+    private var gripH = 0
+
+    /**
+     * The corner grip: inward = wider, down = taller list. The card stays on its edge (x is measured from it).
+     * Starts from the card's actual size and saves dp on release. Consumes every touch, so no drag or collapse.
+     */
+    private fun resize(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                gripping = true; gripX = e.rawX; gripY = e.rawY; gripW = root.width; gripH = scroll.height
+                h.removeCallbacks(fadeR); xSpring.cancel()
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val inward = (if (right) gripX - e.rawX else e.rawX - gripX).toInt()
+                lp.width = (gripW + inward).coerceIn(dp(220), maxOf(dp(220), maxCardW()))
+                val room = edges().let { H - it.top - it.bottom } - lp.y - (root.height - scroll.height)   // keeps the card on screen
+                scroll.maxH = (gripH + (e.rawY - gripY).toInt()).coerceIn(dp(120), maxOf(dp(120), room))
+                scroll.requestLayout(); update()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val d = resources.displayMetrics.density
+                prefs.cardWidth = (lp.width / d).roundToInt(); prefs.listHeight = (scroll.maxH / d).roundToInt()
+                gripping = false
+                if (!expanded) scheduleFade()
+            }
+        }
+        return true
     }
 
     // ---------- touch ----------

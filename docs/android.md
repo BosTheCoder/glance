@@ -25,6 +25,7 @@ In the default Compact view:
 | --- | --- |
 | Tap the pill | Expand it: clock, all-day chips, the current event, what's next and a scrollable agenda |
 | Tap the clock, or anywhere outside | Collapse it again |
+| Drag the grip in the card's bottom corner (the one away from the screen edge) | Resize the card: inwards makes it wider, down gives the agenda more height. It remembers the size |
 | Drag the pill | Move it. It snaps to the nearest left or right edge and remembers where it was |
 | Throw it towards an edge, or drag it mostly off one | Dock it there as the side strip (below) |
 | Leave it for 3 seconds | It fades to the idle opacity. It never moves on its own |
@@ -44,10 +45,11 @@ Settings (same names as the Windows app):
 | Heads-up before a change | 2/5/10 minutes |
 | Vibrate on reminders | On/off |
 | Start when the phone boots | On/off |
+| **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) |
 
 ### Full view
 
-The card stays open: clock, all-day chips, what's on now, up next and the agenda. Drag it by the clock row to move it; it snaps to the nearer left or right edge like the pill does. After 3 seconds without a touch it fades to the idle opacity, but it doesn't collapse, and tapping outside it does nothing. Throw it at an edge to dock it, as with the pill. Touch it anywhere to bring it back to full opacity. Alerts work the same way: the banner shows at the top of the card and the card's outline changes colour. Long-press the clock row for settings.
+The card stays open: clock, all-day chips, what's on now, up next and the agenda. Resize it with the grip in its bottom corner, as in Compact. Drag it by the clock row to move it; it snaps to the nearer left or right edge like the pill does. After 3 seconds without a touch it fades to the idle opacity, but it doesn't collapse, and tapping outside it does nothing. Throw it at an edge to dock it, as with the pill. Touch it anywhere to bring it back to full opacity. Alerts work the same way: the banner shows at the top of the card and the card's outline changes colour. Long-press the clock row for settings.
 
 ### Side strip
 
