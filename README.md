@@ -25,6 +25,7 @@
 
 - **Now and next at a glance.** A card for the current event with a time-left bar, plus the next event and a countdown.
 - **All-day events as chips** under the clock (weather, birthdays, trips with "day 2/5"), visible without hovering.
+- **Sleek alerts inside the widget**, not Windows toasts: amber when things are about to change, a green ▶ banner when an event starts, and a blue 🔔 banner for the event's own Google reminders. See [Alerts](#alerts).
 - **Hover to expand** into a scrollable agenda for the days ahead. When you move away it shrinks back and the scroll resets.
 - **Fades when idle.** It's see-through while you work and turns solid when you hover it.
 - **Acrylic glass** in 7 themes, three glass strengths and any custom colour.
@@ -53,6 +54,20 @@ Want to try it without Google first? Run `Glance.exe --demo`.
 | Right-click | Open settings: calendars, theme, glass, idle opacity, text size, how many events, how far ahead, 12/24h, refresh rate, taskbar, start with Windows, hide/show shortcut |
 
 <p align="center"><img src="docs/images/themes.png" alt="Themes" width="720"></p>
+
+## Alerts
+
+<img align="right" src="docs/images/alerts.png" width="300" alt="Alert states">
+
+| Colour | Means | Goes away |
+| --- | --- | --- |
+| **Amber** countdown and edge | What you're doing changes within 5 min (current event ends or the next one starts) | When the change happens |
+| **Green ▶ Now: …** | An event just started | Once you've hovered the widget |
+| **Blue 🔔** | One of the event's own reminders (the popup reminders you set in Google Calendar) | Click it, or when the event starts |
+
+While an alert is showing, the widget stays fully visible. If it was hidden, it comes back. Reminders play the Windows notification sound, and you can turn that off. Everything is under right-click → **Alerts**, including **Preview alerts** so you can see them.
+
+<br clear="right">
 
 Every option is also in `settings.json`, and edits to it apply live. See **[docs/settings.md](docs/settings.md)** for the full list, including custom colours.
 

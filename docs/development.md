@@ -7,7 +7,8 @@ Glance is a small WPF app on .NET 8, with no NuGet dependencies. It talks to Goo
 **Windows** (.NET 8 SDK):
 
 ```powershell
-dotnet run -- --demo                # fake events, no Google needed
+dotnet run -- --demo                # fake events, no Google needed (and one of each alert state)
+dotnet test tests                   # alert logic tests
 dotnet run                          # real calendar (needs client.json in bin\Debug\net8.0-windows\win-x64\)
 dotnet publish -c Release -o out    # out\Glance.exe, framework-dependent single file
 ```
@@ -33,6 +34,9 @@ just demo                           # WSL: same, but starts a --demo copy from %
 | `Settings.cs` | `settings.json` model, themes and colour resolution |
 | `GoogleCal.cs` | OAuth for installed apps (loopback + PKCE), token refresh and storage, calendar and event fetch |
 | `Native.cs` | P/Invoke for the acrylic backdrop, rounded corners, whole-window alpha, tool-window style and per-monitor work area |
+| `Model.cs` | `Cal` and `Ev` records |
+| `Alerts.cs` | Pure alert rules: which starts or reminders fell due in a time window, and when the next change is. No UI |
+| `tests/` | xUnit tests for `Alerts.cs`. Plain `net8.0`, so `dotnet test tests` runs on Linux too |
 | `Demo.cs` | Fake events relative to now, for `--demo` |
 | `assets/` | Icon: `source.png` (AI-generated), `glance.ico`/`glance.png`, and `icon.py`, which rebuilds them |
 | `tools/` | `screenshot.ps1` captures the window, and `compose.py` builds the README images from those captures |
@@ -43,6 +47,7 @@ just demo                           # WSL: same, but starts a --demo copy from %
 - **Glass.** `WindowChrome` with `GlassFrameThickness=-1` extends the DWM frame. `DWMWA_SYSTEMBACKDROP_TYPE=3` makes it acrylic, and `DWMWA_USE_IMMERSIVE_DARK_MODE` follows how light the tint is. The theme tint is a semi-transparent brush over that.
 - **Fade.** The whole window fades via `WS_EX_LAYERED` and `SetLayeredWindowAttributes`. WPF silently strips `WS_EX_LAYERED` from windows that aren't `AllowsTransparency`, so `Native.Init` hooks `WM_STYLECHANGING` to keep it. Without that hook, tools like AutoHotkey's `WinSetTransparent` don't work on WPF windows either.
 - **Hide/show shortcut.** `RegisterHotKey` on the widget's own window, and `WM_HOTKEY` is handled in a `HwndSource` hook. Registration fails when another app owns the combination, and that's how Glance detects a clash. It can't see shortcuts that live only inside another app, which is why the default uses `Win` rather than `Ctrl+Shift`. A second launch signals the running copy through a named `EventWaitHandle` to show itself.
+- **Alerts.** Every render asks `Alerts.Due(events, since, now)` for starts and reminders in `(since, now]`, then moves `since` forward, so each alert fires once and nothing needs persisting. `since` is clamped to 2 minutes back, so waking from sleep doesn't replay the day. Reminders come from each event's `reminders.overrides` (popup only) or the calendar's `defaultReminders`.
 - **Hover growth.** If expanding would run off the bottom of the monitor, the window moves up and moves back when it collapses.
 
 ## Refreshing the docs images

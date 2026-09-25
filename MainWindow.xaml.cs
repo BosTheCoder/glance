@@ -1,4 +1,6 @@
 using System.IO;
+using System.Media;
+using System.Windows.Media.Animation;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -25,6 +27,12 @@ public partial class MainWindow : Window
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(15) };
     readonly DispatcherTimer collapseDelay = new() { Interval = TimeSpan.FromMilliseconds(400) };
     readonly DispatcherTimer fade = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    // Alerts: amber = something changes soon, green = an event just started, blue = one of the event's reminders.
+    static readonly Color Amber = Color.FromRgb(0xF5, 0xA6, 0x23), Green = Color.FromRgb(0x3D, 0xDC, 0x97), Blue = Color.FromRgb(0x7A, 0xA2, 0xFF);
+    readonly List<Alert> banners = new();
+    readonly HashSet<Alert> pulsed = new();
+    DateTime alertsCheckedTo = DateTime.Now.AddMinutes(-2);   // catch something that started just before launch
+    bool headsUp;
     readonly FileSystemWatcher watcher = new(AppContext.BaseDirectory, "settings.json");
 
     public MainWindow(bool demo)
@@ -166,7 +174,7 @@ public partial class MainWindow : Window
             Native.ToolWindow(hwnd, !s.ShowInTaskbar);
             hotkeyOk = Native.Hotkey(hwnd, s.Hotkey);
         }
-        if (!expanded) FadeTo(s.IdleOpacity);
+        if (!expanded) FadeTo(IdleOpacity());
         ApplySize();
         Render();
     }
@@ -189,6 +197,13 @@ public partial class MainWindow : Window
         Pin.Text = s.Pinned ? "" : "";
         NowPanel.Children.Clear(); NextPanel.Children.Clear(); Agenda.Children.Clear(); AllDayPanel.Children.Clear();
 
+        CheckAlerts(now);
+        var change = Alerts.NextChange(events, now);
+        headsUp = s.HeadsUpMinutes > 0 && change is DateTime c && c - now <= TimeSpan.FromMinutes(s.HeadsUpMinutes);
+        Root.BorderBrush = headsUp ? new SolidColorBrush(Color.FromArgb(0x99, Amber.R, Amber.G, Amber.B)) : Brushes.Transparent;
+        RenderBanners(now);
+        if (!expanded && IsVisible) FadeTo(IdleOpacity());
+
         var allDayToday = events.Where(e => e.AllDay && e.Start <= now && e.End > now).ToList();
         if (s.AllDay != "List")
             foreach (var e in allDayToday) AllDayPanel.Children.Add(Chip(e, now));
@@ -200,14 +215,17 @@ public partial class MainWindow : Window
         var upcoming = timed.Where(e => e.Start > now).ToList();
 
         foreach (var e in current)
-            NowPanel.Children.Add(Card(e, $"until {Time(e.End)}  ·  {Dur(e.End - now)} left", (now - e.Start) / (e.End - e.Start)));
+            NowPanel.Children.Add(Card(e, $"until {Time(e.End)}  ·  {Dur(e.End - now)} left", (now - e.Start) / (e.End - e.Start),
+                headsUp && e.End == change));
         if (current.Count == 0 && (demo || g.SignedIn))
             NowPanel.Children.Add(Text(upcoming.Count > 0 && upcoming[0].Start.Date == now.Date ? $"Free until {Time(upcoming[0].Start)}" : "Free", 15, 0.8));
 
         var next = upcoming.Take(s.NextCount).ToList();
         if (next.Count > 0)
         {
-            NextPanel.Children.Add(Text($"NEXT  ·  {In(next[0].Start - now, next[0].Start)}", 11, 0.55));
+            var label = Text($"NEXT  ·  {In(next[0].Start - now, next[0].Start)}", 11, 0.55);
+            if (headsUp && next[0].Start == change) { label.Foreground = new SolidColorBrush(Amber); label.Opacity = 1; label.FontWeight = FontWeights.SemiBold; }
+            NextPanel.Children.Add(label);
             foreach (var e in next) NextPanel.Children.Add(Row(e, 14));
         }
 
@@ -244,20 +262,22 @@ public partial class MainWindow : Window
         Text = t, FontSize = size, Opacity = opacity, Margin = margin ?? new(0, 0, 0, 2), TextTrimming = TextTrimming.CharacterEllipsis,
     };
 
-    UIElement Card(Ev e, string sub, double progress)
+    UIElement Card(Ev e, string sub, double progress, bool endingSoon = false)
     {
         progress = Math.Clamp(progress, 0, 1);
         var bar = new Grid { Height = 3, Margin = new(0, 6, 0, 0) };
         bar.ColumnDefinitions.Add(new() { Width = new(progress, GridUnitType.Star) });
         bar.ColumnDefinitions.Add(new() { Width = new(1 - progress, GridUnitType.Star) });
-        bar.Children.Add(new Border { Background = B(e.Color), CornerRadius = new(1.5) });
+        bar.Children.Add(new Border { Background = endingSoon ? new SolidColorBrush(Amber) : B(e.Color), CornerRadius = new(1.5) });
         var rest = new Border { Background = track, CornerRadius = new(1.5) };
         Grid.SetColumn(rest, 1);
         bar.Children.Add(rest);
 
         var sp = new StackPanel();
         sp.Children.Add(new TextBlock { Text = e.Title, FontSize = 17, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        sp.Children.Add(Text(sub, 12, 0.7));
+        var subText = Text(sub, 12, 0.7);
+        if (endingSoon) { subText.Foreground = new SolidColorBrush(Amber); subText.Opacity = 1; }
+        sp.Children.Add(subText);
         sp.Children.Add(bar);
         return new Border { Background = card, CornerRadius = new(8), Padding = new(10, 7, 10, 9), Margin = new(0, 0, 0, 6), Child = sp };
     }
@@ -319,12 +339,13 @@ public partial class MainWindow : Window
     {
         expanded = false;
         Scroll.Visibility = Visibility.Collapsed;
+        if (banners.RemoveAll(a => a.Kind == AlertKind.Starting) > 0) Render();   // you've hovered, so you've seen it
         ShowAllDay();
         Scroll.ScrollToTop();
         Pin.Opacity = 0;
         Grip.Opacity = 0;
         if (shiftedFrom is double t) { Top = t; shiftedFrom = null; }
-        FadeTo(s.IdleOpacity);
+        FadeTo(IdleOpacity());
     }
 
     public void ToggleVisible()
@@ -344,4 +365,77 @@ public partial class MainWindow : Window
     }
 
     void FadeTo(double target) { alphaTarget = target; fade.Start(); }
+
+    /// Idle is see-through, but an unread alert keeps it fully lit and a change coming up keeps it mostly lit.
+    double IdleOpacity() => banners.Count > 0 ? 1 : headsUp ? Math.Max(s.IdleOpacity, 0.85) : s.IdleOpacity;
+
+    // ---------- alerts ----------
+
+    void CheckAlerts(DateTime now)
+    {
+        // A "starting" banner stays until you've hovered the widget (seen it), at most 10 min; a reminder until clicked or its event starts.
+        banners.RemoveAll(a => a.Kind == AlertKind.Starting ? now - a.At > TimeSpan.FromMinutes(10) : now >= a.Event.Start);
+        if (lastFetch == DateTime.MinValue) return;   // nothing loaded yet; don't advance past alerts we can't see
+
+        var since = alertsCheckedTo < now.AddMinutes(-2) ? now.AddMinutes(-2) : alertsCheckedTo;   // after sleep, don't replay the day
+        alertsCheckedTo = now;
+        var fresh = Alerts.Due(events, since, now, s.Reminders);
+        if (fresh.Count == 0) return;
+
+        banners.AddRange(fresh.Select(a => a with { At = now }));   // At = when shown, for expiry
+        if (!IsVisible && s.AlertsReveal) Show();
+        if (s.Sound == "All" || s.Sound == "Reminders" && fresh.Any(a => a.Kind == AlertKind.Reminder)) SystemSounds.Asterisk.Play();
+    }
+
+    void RenderBanners(DateTime now)
+    {
+        Banners.Children.Clear();
+        foreach (var a in banners.TakeLast(3))
+        {
+            var reminder = a.Kind == AlertKind.Reminder;
+            var accent = reminder ? Blue : Green;
+            var until = a.Event.Start - now;
+            var title = reminder ? a.Event.Title : $"Now: {a.Event.Title}";
+            var sub = reminder
+                ? (a.Event.AllDay ? $"{a.Event.Start:ddd d MMM}" : until.TotalHours < 12 ? $"in {Dur(until)}  ·  {Time(a.Event.Start)}" : $"{a.Event.Start:ddd} {Time(a.Event.Start)}")
+                : $"until {Time(a.Event.End)}";
+
+            var glyph = new TextBlock
+            {
+                Text = reminder ? "\uEA8F" : "\uE768",   // Ringer (bell) / Play
+                FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14,
+                Foreground = new SolidColorBrush(accent), Margin = new(0, 2, 10, 0), VerticalAlignment = VerticalAlignment.Top,
+            };
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            text.Children.Add(Text(sub, 11.5, 0.75));
+            var row = new DockPanel();
+            DockPanel.SetDock(glyph, Dock.Left);
+            row.Children.Add(glyph); row.Children.Add(text);
+
+            var b = new Border
+            {
+                Child = row, CornerRadius = new(8), Padding = new(10, 6, 10, 7), Margin = new(0, 0, 0, 6), Cursor = System.Windows.Input.Cursors.Hand,
+                Background = new SolidColorBrush(Color.FromArgb(0x26, accent.R, accent.G, accent.B)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0xB0, accent.R, accent.G, accent.B)), BorderThickness = new(1),
+                ToolTip = "Click to dismiss",
+            };
+            b.MouseLeftButtonDown += (_, e) => { e.Handled = true; banners.Remove(a); Render(); };
+            if (pulsed.Add(a))   // a gentle double pulse the first time it appears
+                b.BeginAnimation(OpacityProperty, new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
+            Banners.Children.Add(b);
+        }
+    }
+
+    /// Menu → Alerts → Preview: one of each banner using the next event, so you can see what they look like.
+    void PreviewAlerts()
+    {
+        var now = DateTime.Now;
+        var e = events.Where(x => !x.AllDay && x.Start > now).OrderBy(x => x.Start).FirstOrDefault()
+                ?? new Ev("Example event", now.AddMinutes(10), now.AddMinutes(40), false, "#7986CB");
+        banners.Add(new(AlertKind.Starting, e, now));
+        banners.Add(new(AlertKind.Reminder, e, now));
+        if (s.Sound != "Off") SystemSounds.Asterisk.Play();
+        Render();
+    }
 }

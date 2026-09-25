@@ -12,7 +12,7 @@
         <ContextMenu/>
     </Window.ContextMenu>
     <Grid>
-        <Border x:Name="Root" Width="300" Padding="14,10,14,12">
+        <Border x:Name="Root" Width="300" Padding="14,10,14,12" CornerRadius="8" BorderThickness="1" BorderBrush="Transparent">
             <Border.LayoutTransform>
                 <ScaleTransform x:Name="Zoom"/>
             </Border.LayoutTransform>
@@ -22,6 +22,7 @@
                                FontSize="12" Opacity="0" Cursor="Hand" ToolTip="Pin on top"/>
                     <TextBlock x:Name="Clock" Opacity="0.6" FontSize="12"/>
                 </DockPanel>
+                <StackPanel x:Name="Banners"/>
                 <WrapPanel x:Name="AllDayPanel" Margin="0,0,0,6"/>
                 <StackPanel x:Name="NowPanel"/>
                 <StackPanel x:Name="NextPanel" Margin="0,4,0,0"/>

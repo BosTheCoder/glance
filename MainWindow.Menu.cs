@@ -68,6 +68,15 @@ public partial class MainWindow
             lastFetch = DateTime.MinValue;   // fetch the new range
         }));
         m.Items.Add(Toggle("24-hour clock", s.Clock24, v => s.Clock24 = v));
+
+        var alerts = new MenuItem { Header = "Alerts" };
+        alerts.Items.Add(Choice("Heads-up before changes", new[] { ("Off", 0), ("2 minutes", 2), ("5 minutes", 5), ("10 minutes", 10) }, s.HeadsUpMinutes, v => s.HeadsUpMinutes = v));
+        alerts.Items.Add(Toggle("Event reminders", s.Reminders, v => s.Reminders = v));
+        alerts.Items.Add(Choice("Sound", new[] { ("Off", "Off"), ("Reminders only", "Reminders"), ("All alerts", "All") }, s.Sound, v => s.Sound = v));
+        alerts.Items.Add(Toggle("Show the widget for alerts when hidden", s.AlertsReveal, v => s.AlertsReveal = v));
+        alerts.Items.Add(new Separator());
+        alerts.Items.Add(Action("Preview alerts", PreviewAlerts));
+        m.Items.Add(alerts);
         m.Items.Add(Choice("Check for changes", new[] { ("Every 30 seconds", 30), ("Every minute", 60), ("Every 5 minutes", 300) }, s.RefreshSeconds, v => s.RefreshSeconds = v));
         m.Items.Add(new Separator());
 

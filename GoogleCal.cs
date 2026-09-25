@@ -10,9 +10,6 @@ using System.Text.Json.Nodes;
 
 namespace Glance;
 
-public record Cal(string Id, string Name, string Color, bool DefaultOn);
-public record Ev(string Title, DateTime Start, DateTime End, bool AllDay, string Color);
-
 public class NeedsSignIn : Exception { }
 
 /// Google Calendar over plain HTTP: installed-app OAuth (loopback + PKCE), read-only scope.
@@ -180,7 +177,8 @@ public class GoogleCal
             (string)c!["id"]!,
             (string?)c["summaryOverride"] ?? (string?)c["summary"] ?? "?",
             (string?)c["backgroundColor"] ?? "#4285F4",
-            (bool?)c["selected"] ?? false)).ToList();
+            (bool?)c["selected"] ?? false,
+            Popups(c["defaultReminders"]))).ToList();
     }
 
     public async Task<List<Ev>> Events(Cal cal, DateTime from, DateTime to)
@@ -193,10 +191,17 @@ public class GoogleCal
             if ((string?)e!["status"] == "cancelled" || (string?)e["eventType"] == "workingLocation") continue;
             if (e["attendees"]?.AsArray().Any(a => (bool?)a!["self"] == true && (string?)a["responseStatus"] == "declined") == true) continue;
             var allDay = e["start"]!["date"] != null;
-            list.Add(new Ev((string?)e["summary"] ?? "(busy)", When(e["start"]!), When(e["end"]!), allDay, cal.Color));
+            var r = e["reminders"];
+            var reminders = (bool?)r?["useDefault"] == false ? Popups(r?["overrides"]) : cal.DefaultReminders;
+            list.Add(new Ev((string?)e["summary"] ?? "(busy)", When(e["start"]!), When(e["end"]!), allDay, cal.Color, reminders));
         }
         return list;
     }
+
+    /// Minutes-before for "popup" reminders (email reminders aren't ours to show).
+    static int[] Popups(JsonNode? list) => list?.AsArray()
+        .Where(x => (string?)x!["method"] == "popup")
+        .Select(x => (int)x!["minutes"]!).ToArray() ?? [];
 
     static DateTime When(JsonNode n) => n["date"] is JsonNode d
         ? DateTime.ParseExact((string)d!, "yyyy-MM-dd", CultureInfo.InvariantCulture)

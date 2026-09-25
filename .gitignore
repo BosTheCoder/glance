@@ -5,3 +5,5 @@ token.dat
 settings.json
 out/
 glance.log
+tests/bin/
+tests/obj/

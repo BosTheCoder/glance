@@ -37,6 +37,12 @@ public class Settings
     public int DaysAhead { get; set; } = 7;         // 0 = today only
     public bool Clock24 { get; set; } = true;
 
+    // Alerts
+    public int HeadsUpMinutes { get; set; } = 5;       // amber countdown before things change; 0 = off
+    public bool Reminders { get; set; } = true;        // show the events' own Google reminders
+    public string Sound { get; set; } = "Reminders";   // Off | Reminders | All
+    public bool AlertsReveal { get; set; } = true;     // bring the widget back for an alert if it's hidden
+
     public static string Path => System.IO.Path.Combine(AppContext.BaseDirectory, "settings.json");
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 

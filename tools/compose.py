@@ -36,6 +36,13 @@ def board(names, pad=48, gap=32):
         x += t.width + gap
     return bg
 
-board(["collapsed", "expanded"]).save(out / "hero.png")
-board(["midnight", "ocean", "plum", "light"]).save(out / "themes.png")
+# Each board is rebuilt only if all its captures are present, so you can refresh one image at a time.
+boards = {
+    "hero": ["collapsed", "expanded"],
+    "themes": ["midnight", "ocean", "plum", "light"],
+    "alerts": ["alerts"],   # a fresh --demo launch shows all three alert states at once
+}
+for name, shots in boards.items():
+    if all((src / f"shot-{n}.png").exists() for n in shots):
+        board(shots).save(out / f"{name}.png")
 print(*sorted(out.iterdir()), sep="\n")

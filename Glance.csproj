@@ -11,7 +11,8 @@
     <PublishSingleFile>true</PublishSingleFile>
     <AssemblyName>Glance</AssemblyName>
     <ApplicationIcon>assets\glance.ico</ApplicationIcon>
-    <Version>1.2.1</Version>
+    <Version>1.3.0</Version>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;android/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="assets\glance.ico" />
