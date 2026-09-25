@@ -17,6 +17,26 @@ static class Native
     [StructLayout(LayoutKind.Sequential)] struct RectI { public int L, T, R, B; }
     [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public RectI Monitor, Work; public uint Flags; }
 
+    [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint vk);
+    [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
+
+    /// Registers "Ctrl+Alt+G"-style text as a global hotkey. False if it can't be parsed or another app owns it.
+    public static bool Hotkey(IntPtr hwnd, string? text)
+    {
+        UnregisterHotKey(hwnd, 1);
+        if (string.IsNullOrWhiteSpace(text)) return true;
+        uint mods = 0x4000;   // MOD_NOREPEAT
+        var parts = text.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        foreach (var p in parts[..^1])
+            mods |= p.ToLower() switch { "alt" => 1u, "ctrl" or "control" => 2u, "shift" => 4u, "win" => 8u, _ => 0u };
+        var key = parts[^1];
+        if (key.Length == 1 && char.IsDigit(key[0])) key = "D" + key;
+        if (!Enum.TryParse<System.Windows.Input.Key>(key, true, out var k)) return false;
+        return RegisterHotKey(hwnd, 1, mods, (uint)System.Windows.Input.KeyInterop.VirtualKeyFromKey(k));
+    }
+
+    public const int WM_HOTKEY = 0x0312;
+
     const int GWL_EXSTYLE = -20, WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80, WM_STYLECHANGING = 0x7C;
 
     public static void Init(Window w, IntPtr hwnd)

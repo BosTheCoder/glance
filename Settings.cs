@@ -19,6 +19,7 @@ public class Settings
     // Behaviour
     public bool Pinned { get; set; } = true;
     public bool ShowInTaskbar { get; set; } = true;
+    public string? Hotkey { get; set; } = "Win+Shift+G";   // global hide/show; null or "" = none
     public double IdleOpacity { get; set; } = 0.5;
     public int RefreshSeconds { get; set; } = 60;   // how often to check Google for changes
 

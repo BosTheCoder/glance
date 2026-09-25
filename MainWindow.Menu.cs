@@ -20,8 +20,16 @@ public partial class MainWindow
         var m = ContextMenu;
         m.Items.Clear();
 
+        m.Items.Add(Action(string.IsNullOrEmpty(s.Hotkey) ? "Hide" : $"Hide\t{s.Hotkey}", ToggleVisible));
         m.Items.Add(Toggle("Pin on top", s.Pinned, v => s.Pinned = v));
         m.Items.Add(Toggle("Show in taskbar", s.ShowInTaskbar, v => s.ShowInTaskbar = v));
+        var keys = new[] { "Win+Shift+G", "Win+Ctrl+G", "Ctrl+Alt+Shift+G", "Ctrl+Alt+K" }.Select(k => (k, k)).ToList();
+        if (!string.IsNullOrEmpty(s.Hotkey) && !keys.Any(k => k.Item1 == s.Hotkey)) keys.Add((s.Hotkey, s.Hotkey));   // custom one from settings.json
+        keys.Add(("None", ""));
+        var hk = Choice(hotkeyOk ? "Hide/show shortcut" : "Hide/show shortcut (taken, pick another)", keys, s.Hotkey ?? "", v => s.Hotkey = v);
+        hk.Items.Add(new Separator());
+        hk.Items.Add(Action("Custom… (edit Hotkey in settings.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
+        m.Items.Add(hk);
         m.Items.Add(Toggle("Start with Windows", StartsWithWindows, v => StartsWithWindows = v));
         m.Items.Add(new Separator());
 

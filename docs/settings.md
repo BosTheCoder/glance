@@ -14,6 +14,7 @@ Everything in the right-click menu is saved to `settings.json` next to `Glance.e
 | `Scale` | `1.0` | Text size multiplier |
 | `Pinned` | `true` | Always on top |
 | `ShowInTaskbar` | `true` | `false` also hides it from Alt+Tab |
+| `Hotkey` | `"Win+Shift+G"` | Global hide/show shortcut. Modifiers are `Ctrl`, `Alt`, `Shift` and `Win`, plus any key name (`G`, `Space`, `F9`, `1`). `""` means none. If another app already owns it, the widget says so and you can pick another one |
 | `Calendars` | `null` | Calendar IDs to show. `null` means the ones ticked in Google Calendar |
 | `NextCount` | `1` | Upcoming events shown when collapsed |
 | `MaxEvents` | `10` | Events in the expanded list. `0` means all |

@@ -48,7 +48,8 @@ Want to try it without Google first? Run `Glance.exe --demo`.
 | Drag anywhere | Move it |
 | Drag the bottom-right corner | Resize the width, and the list height while expanded |
 | Click the pin | Keep it on top of other windows |
-| Right-click | Open settings: calendars, theme, glass, idle opacity, text size, how many events, how far ahead, 12/24h, refresh rate, taskbar, start with Windows |
+| <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | Hide or show it from anywhere (change it in the menu). Running `Glance.exe` again also brings it back |
+| Right-click | Open settings: calendars, theme, glass, idle opacity, text size, how many events, how far ahead, 12/24h, refresh rate, taskbar, start with Windows, hide/show shortcut |
 
 <p align="center"><img src="docs/images/themes.png" alt="Themes" width="720"></p>
 

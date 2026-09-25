@@ -17,7 +17,7 @@ public partial class MainWindow : Window
     List<Ev> events = new();
     DateTime lastFetch = DateTime.MinValue;
     string? error;
-    bool busy, expanded;
+    bool busy, expanded, hotkeyOk = true;
     double? shiftedFrom;   // original Top when expanding had to move the window up to stay on screen
     IntPtr hwnd;
     double alpha = 1, alphaTarget = 1;
@@ -36,6 +36,11 @@ public partial class MainWindow : Window
         {
             hwnd = new WindowInteropHelper(this).Handle;
             Native.Init(this, hwnd);
+            HwndSource.FromHwnd(hwnd).AddHook((IntPtr h, int msg, IntPtr wp, IntPtr lp, ref bool handled) =>
+            {
+                if (msg == Native.WM_HOTKEY) { ToggleVisible(); handled = true; }
+                return IntPtr.Zero;
+            });
             ApplyLook();
             Native.Alpha(hwnd, alpha);
         };
@@ -159,6 +164,7 @@ public partial class MainWindow : Window
         {
             Native.DarkBackdrop(hwnd, 0.299 * tint.R + 0.587 * tint.G + 0.114 * tint.B < 128);
             Native.ToolWindow(hwnd, !s.ShowInTaskbar);
+            hotkeyOk = Native.Hotkey(hwnd, s.Hotkey);
         }
         if (!expanded) FadeTo(s.IdleOpacity);
         ApplySize();
@@ -217,7 +223,9 @@ public partial class MainWindow : Window
         }
         if (Agenda.Children.Count == 0) Agenda.Children.Add(Text(s.DaysAhead == 0 ? "Nothing else today" : "Nothing else coming up", 12, 0.5));
 
-        var status = error ?? (demo || g.SignedIn ? null : "Click to sign in with Google");
+        var status = error
+            ?? (demo || g.SignedIn ? null : "Click to sign in with Google")
+            ?? (hotkeyOk ? null : $"Shortcut {s.Hotkey} is taken by another app. Right-click → Hide/show shortcut");
         Status.Text = status;
         Status.Visibility = status == null ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -294,6 +302,22 @@ public partial class MainWindow : Window
         Grip.Opacity = 0;
         if (shiftedFrom is double t) { Top = t; shiftedFrom = null; }
         FadeTo(s.IdleOpacity);
+    }
+
+    public void ToggleVisible()
+    {
+        if (IsVisible) { collapseDelay.Stop(); Collapse(); Hide(); }
+        else Reveal();
+    }
+
+    /// Show and flash to full brightness so it's easy to spot, then settle back to idle.
+    public void Reveal()
+    {
+        Show();
+        alpha = 1;
+        Native.Alpha(hwnd, 1);
+        if (!IsMouseOver) collapseDelay.Start();
+        Render();
     }
 
     void FadeTo(double target) { alphaTarget = target; fade.Start(); }

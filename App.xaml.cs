@@ -10,13 +10,18 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         var demo = e.Args.Contains("--demo");
-        single = new Mutex(true, demo ? "Glance.Demo" : "Glance.SingleInstance", out var fresh);
-        if (!fresh) { Shutdown(); return; }
+        var name = demo ? "Glance.Demo" : "Glance.SingleInstance";
+        single = new Mutex(true, name, out var fresh);
+        // Launching Glance again (Start menu, shortcut) brings a hidden widget back instead of doing nothing.
+        var reveal = new EventWaitHandle(false, EventResetMode.AutoReset, name + ".Reveal");
+        if (!fresh) { reveal.Set(); Shutdown(); return; }
         DispatcherUnhandledException += (_, ex) =>
         {
             File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "glance.log"), $"{DateTime.Now:o} {ex.Exception}\n");
             ex.Handled = true;
         };
-        new MainWindow(demo).Show();
+        var w = new MainWindow(demo);
+        w.Show();
+        new Thread(() => { while (reveal.WaitOne()) w.Dispatcher.Invoke(w.Reveal); }) { IsBackground = true }.Start();
     }
 }

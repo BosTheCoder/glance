@@ -42,6 +42,7 @@ just demo                           # WSL: same, but starts a --demo copy from %
 - **Data.** Glance polls every `RefreshSeconds`, and also on hover if the data is more than 20 s old. Each refresh fetches `calendarList` plus one `events.list` per chosen calendar, with `singleEvents=true` so Google expands recurring events. It skips declined events and working-location entries.
 - **Glass.** `WindowChrome` with `GlassFrameThickness=-1` extends the DWM frame. `DWMWA_SYSTEMBACKDROP_TYPE=3` makes it acrylic, and `DWMWA_USE_IMMERSIVE_DARK_MODE` follows how light the tint is. The theme tint is a semi-transparent brush over that.
 - **Fade.** The whole window fades via `WS_EX_LAYERED` and `SetLayeredWindowAttributes`. WPF silently strips `WS_EX_LAYERED` from windows that aren't `AllowsTransparency`, so `Native.Init` hooks `WM_STYLECHANGING` to keep it. Without that hook, tools like AutoHotkey's `WinSetTransparent` don't work on WPF windows either.
+- **Hide/show shortcut.** `RegisterHotKey` on the widget's own window, and `WM_HOTKEY` is handled in a `HwndSource` hook. Registration fails when another app owns the combination, and that's how Glance detects a clash. It can't see shortcuts that live only inside another app, which is why the default uses `Win` rather than `Ctrl+Shift`. A second launch signals the running copy through a named `EventWaitHandle` to show itself.
 - **Hover growth.** If expanding would run off the bottom of the monitor, the window moves up and moves back when it collapses.
 
 ## Refreshing the docs images
