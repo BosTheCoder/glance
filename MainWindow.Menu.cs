@@ -78,7 +78,7 @@ public partial class MainWindow
         var alerts = new MenuItem { Header = "Alerts" };
         alerts.Items.Add(Choice("Heads-up before changes", new[] { ("Off", 0), ("2 minutes", 2), ("5 minutes", 5), ("10 minutes", 10) }, s.HeadsUpMinutes, v => s.HeadsUpMinutes = v));
         alerts.Items.Add(Toggle("Event reminders", s.Reminders, v => s.Reminders = v));
-        alerts.Items.Add(Choice("Sound", new[] { ("Off", "Off"), ("Reminders only", "Reminders"), ("All alerts", "All") }, s.Sound, v => s.Sound = v));
+        alerts.Items.Add(Choice("Sound", new[] { ("Off", "Off"), ("Heads-up and reminders", "Reminders"), ("All alerts", "All") }, s.Sound, v => s.Sound = v));
         alerts.Items.Add(Toggle("Show the widget for alerts when hidden", s.AlertsReveal, v => s.AlertsReveal = v));
         alerts.Items.Add(new Separator());
         alerts.Items.Add(Action("Preview alerts", PreviewAlerts));
@@ -93,6 +93,7 @@ public partial class MainWindow
             Set(() => { s.Width = d.Width; s.ListHeight = d.ListHeight; s.Scale = d.Scale; s.Left = s.Top = null; });
             PlaceOnScreen();
         }));
+        m.Items.Add(Action(update == null ? "Check for updates" : $"Update to {update.Tag}", async () => await CheckForUpdates()));
         m.Items.Add(Action("Refresh now", async () => { lastFetch = DateTime.MinValue; await Refresh(); }));
         if (!demo)
             m.Items.Add(g.SignedIn

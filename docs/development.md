@@ -61,9 +61,12 @@ uv run tools/compose.py %TEMP%
 
 ## Releasing
 
-1. Bump `<Version>` in `Glance.csproj`.
+1. Bump `<Version>` in `Glance.csproj`, and `versionName` **and** `versionCode` in `android/app/build.gradle.kts`. Android refuses an update whose versionCode isn't higher.
 2. Tag and push: `git tag v1.2.0 && git push --tags`.
 3. The [build workflow](../.github/workflows/build.yml) builds `Glance.exe` (framework-dependent) and `Glance-standalone.exe` (self-contained) on `windows-latest` and attaches both to a GitHub release. Every push and PR also builds, and uploads the exes as a workflow artifact.
+4. Attach the APK, which is signed locally with a key that never leaves the machine: `just android && gh release upload v1.2.0 android/dist/Glance.apk`.
+
+Both apps update themselves from the latest release (Windows: right-click → Check for updates; Android: Settings → Check for updates). They compare the tag with their own version and verify the asset's SHA-256 digest from the GitHub API, so the release asset names (`Glance.exe`, `Glance-standalone.exe`, `Glance.apk`) must stay the same.
 
 ## Requirements and limits
 

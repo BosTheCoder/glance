@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Settings > Check for updates: GitHub's releases API, then install through PackageInstaller. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:label="Glance"
@@ -31,10 +34,11 @@
                 android:value="Floating calendar widget that shows the current and next event over other apps" />
         </service>
 
-        <!-- Not exported: BOOT_COMPLETED comes from the system, which still reaches it. -->
+        <!-- Not exported: BOOT_COMPLETED and MY_PACKAGE_REPLACED come from the system, which still reaches it. -->
         <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
     </application>

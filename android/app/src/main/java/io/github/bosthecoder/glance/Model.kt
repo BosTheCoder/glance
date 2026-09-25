@@ -19,6 +19,8 @@ sealed class Alert {
     data class Starting(override val ev: Ev) : Alert()
     /** One of the event's own reminders is due: blue bell banner. */
     data class Reminder(override val ev: Ev, val minutes: Int) : Alert()
+    /** Heads-up: at [at] [ev] starts ("Next:") or, if [starting] is false, the current [ev] ends ("Ending:"). Amber. */
+    data class Coming(override val ev: Ev, val starting: Boolean, val at: Long) : Alert()
 }
 
 const val MIN = 60_000L
@@ -40,6 +42,17 @@ object Plan {
     /** True in the last [minutes] before [nextChange]: the pill untucks and turns amber. */
     fun headsUp(events: List<Ev>, now: Long, minutes: Int): Boolean =
         nextChange(events, now)?.let { it - now in 1..minutes * MIN } ?: false
+
+    /**
+     * The heads-up banner's subject, or null outside the heads-up window: the event that starts at the next
+     * change, or failing that the current one that ends then. A start wins when both happen at once.
+     */
+    fun coming(events: List<Ev>, now: Long, minutes: Int): Alert.Coming? {
+        if (!headsUp(events, now, minutes)) return null
+        val at = nextChange(events, now) ?: return null
+        upcoming(events, now).firstOrNull { it.begin == at }?.let { return Alert.Coming(it, true, at) }
+        return current(events, now).firstOrNull { it.end == at }?.let { Alert.Coming(it, false, at) }
+    }
 
     /** The next instant anything on screen should change, so the tick can land on it instead of up to 30 s late. */
     fun nextMoment(events: List<Ev>, now: Long, headsUpMinutes: Int): Long? =
@@ -89,4 +102,15 @@ class AlertTracker(private val windowMs: Long = 2 * MIN) {
 fun dur(ms: Long): String {
     val m = maxOf(1L, (ms + MIN - 1) / MIN)
     return if (m < 60) "${m}m" else if (m % 60 == 0L) "${m / 60}h" else "${m / 60}h ${m % 60}m"
+}
+
+/** True if release tag [tag] ("v1.8.0") is a later version than [current] ("1.7.1"), compared number by number. */
+fun isNewer(tag: String, current: String): Boolean {
+    fun parts(v: String) = v.trim().removePrefix("v").split('.').map { p -> p.takeWhile { it.isDigit() }.toIntOrNull() ?: 0 }
+    val a = parts(tag); val b = parts(current)
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val d = a.getOrElse(i) { 0 } - b.getOrElse(i) { 0 }
+        if (d != 0) return d > 0
+    }
+    return false
 }

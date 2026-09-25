@@ -19,6 +19,9 @@ public partial class MainWindow : Window
     List<Ev> events = new();
     DateTime lastFetch = DateTime.MinValue;
     string? error;
+    string? note;                      // a passing message in the status line (update checks)
+    Updater.Release? update;           // a newer release, found by the daily check
+    DateTime updateChecked = DateTime.MinValue;
     bool busy, hotkeyOk = true;
     bool expanded;   // agenda showing: while hovered, or always in Full view
     bool hovering;   // mouse is over the widget: full brightness
@@ -43,6 +46,8 @@ public partial class MainWindow : Window
     readonly HashSet<Alert> pulsed = new();
     DateTime alertsCheckedTo = DateTime.Now.AddMinutes(-2);   // catch something that started just before launch
     bool headsUp;
+    HeadsUp? coming;
+    DateTime? headsUpFor, headsUpDismissed;   // the change we last alerted for / had its banner clicked away
     readonly FileSystemWatcher watcher = new(AppContext.BaseDirectory, "settings.json");
 
     public MainWindow(bool demo)
@@ -71,7 +76,15 @@ public partial class MainWindow : Window
         };
 
         // Google has no push to a desktop app, so poll: cheap (a few requests per minute) and keeps edits near-live.
-        tick.Tick += async (_, _) => { if (DateTime.Now - lastFetch >= TimeSpan.FromSeconds(s.RefreshSeconds - 5)) await Refresh(); else Render(); };
+        tick.Tick += async (_, _) =>
+        {
+            if (DateTime.Now - updateChecked > TimeSpan.FromDays(1))   // quietly, so the status line can say when there's one
+            {
+                updateChecked = DateTime.Now;
+                try { update = await Updater.Newer(); } catch { }
+            }
+            if (DateTime.Now - lastFetch >= TimeSpan.FromSeconds(s.RefreshSeconds - 5)) await Refresh(); else Render();
+        };
         tick.Start();
         collapseDelay.Tick += (_, _) => { collapseDelay.Stop(); Collapse(); };
         fade.Tick += (_, _) =>
@@ -124,7 +137,11 @@ public partial class MainWindow : Window
             s.Left = Left; s.Top = Top; s.Save();
         };
         Pin.MouseLeftButtonDown += (_, e) => { e.Handled = true; Set(() => s.Pinned = !s.Pinned); };
-        Status.MouseLeftButtonDown += async (_, e) => { if (!demo && !g.SignedIn) { e.Handled = true; await SignIn(); } };
+        Status.MouseLeftButtonDown += async (_, e) =>
+        {
+            if (!demo && !g.SignedIn) { e.Handled = true; await SignIn(); }
+            else if (update != null && error == null) { e.Handled = true; await CheckForUpdates(); }
+        };
 
         Grip.DragStarted += (_, _) => { if (expanded) s.ListHeight = Scroll.ActualHeight; };   // shrink from what's visible
         Grip.DragDelta += (_, e) =>
@@ -239,7 +256,16 @@ public partial class MainWindow : Window
 
         CheckAlerts(now);
         var change = Alerts.NextChange(events, now);
-        headsUp = s.HeadsUpMinutes > 0 && change is DateTime c && c - now <= TimeSpan.FromMinutes(s.HeadsUpMinutes);
+        coming = Alerts.Coming(events, now, s.HeadsUpMinutes);
+        headsUp = coming != null;
+        if (coming != null && coming.At != headsUpFor && lastFetch != DateTime.MinValue)
+        {
+            // Once per change: pulse the whole widget (so the side strip gets it too), chime, and come back if hidden.
+            headsUpFor = coming.At;
+            Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
+            if (s.Sound != "Off") SystemSounds.Asterisk.Play();
+            if (!IsVisible && s.AlertsReveal) Show();
+        }
         // Docked, the banners don't fit, so the strip's rim takes the alert's colour instead.
         Color? rim = s.Docked != null && banners.Count > 0 ? (banners[^1].Kind == AlertKind.Reminder ? Blue : Green) : headsUp ? Amber : null;
         Root.BorderBrush = rim is Color r ? new SolidColorBrush(Color.FromArgb(s.Docked != null ? (byte)0xDD : (byte)0x99, r.R, r.G, r.B)) : Brushes.Transparent;
@@ -294,7 +320,9 @@ public partial class MainWindow : Window
 
         var status = error
             ?? (demo || g.SignedIn ? null : "Click to sign in with Google")
-            ?? (hotkeyOk ? null : $"Shortcut {s.Hotkey} is taken by another app. Right-click → Hide/show shortcut");
+            ?? (hotkeyOk ? null : $"Shortcut {s.Hotkey} is taken by another app. Right-click → Hide/show shortcut")
+            ?? note
+            ?? (update == null ? null : $"Update to {update.Tag} available. Click to install");
         Status.Text = status;
         Status.Visibility = status == null ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -373,6 +401,30 @@ public partial class MainWindow : Window
 
     string In(TimeSpan t, DateTime at) => t.TotalHours < 12 ? $"IN {Dur(t).ToUpper()}" : $"{at:ddd} {Time(at)}".ToUpper();
 
+    // ---------- updates ----------
+
+    /// Menu → Check for updates (or click the "update available" line): install if there's a newer release.
+    async Task CheckForUpdates()
+    {
+        note = "Checking for updates…"; Render();
+        try
+        {
+            update = await Updater.Newer();
+            updateChecked = DateTime.Now;
+            if (update != null)
+            {
+                note = $"Updating to {update.Tag}…"; Render();
+                await Updater.Install(update);
+                return;
+            }
+            note = $"You're on the latest (v{Updater.Current})";
+        }
+        catch (Exception e) { note = "Update failed: " + e.Message; }
+        Render();
+        await Task.Delay(6000);
+        note = null; Render();
+    }
+
     // ---------- side strip ----------
 
     /// The docked form: what's on with time left and a bar, then what's next, [DockCount] events in all.
@@ -400,6 +452,7 @@ public partial class MainWindow : Window
             var until = e.Start - now;
             sp.Children.Add(Text(on ? $"{Dur(e.End - now)} left" : $"{(until.TotalHours < 12 ? $"in {Dur(until)}" : $"{e.Start:ddd} {Time(e.Start)}")}  ·  {Dur(e.End - e.Start)}", 11, 0.65, new(0)));
             if (on) sp.Children.Add(Bar(e, (now - e.Start) / (e.End - e.Start), headsUp && e.End == change));
+            else if (coming is { Starts: true } h && h.Event == e) { var sub = (TextBlock)sp.Children[1]; sub.Foreground = new SolidColorBrush(Amber); sub.Opacity = 1; }
             Strip.Children.Add(sp);
         }
     }
@@ -551,6 +604,12 @@ public partial class MainWindow : Window
     void RenderBanners(DateTime now)
     {
         Banners.Children.Clear();
+        if (coming is { } h && h.At != headsUpDismissed && !banners.Any(a => a.Kind == AlertKind.Reminder && a.Event == h.Event))   // the reminder already says it
+        {
+            var b = Banner("\uE823", Amber, $"{(h.Starts ? "Next" : "Ending")}: {h.Event.Title}", $"in {Dur(h.At - now)}  ·  {Time(h.At)}");   // Clock
+            b.MouseLeftButtonDown += (_, e) => { e.Handled = true; headsUpDismissed = h.At; Render(); };
+            Banners.Children.Add(b);
+        }
         foreach (var a in banners.TakeLast(3))
         {
             var reminder = a.Kind == AlertKind.Reminder;
@@ -561,31 +620,34 @@ public partial class MainWindow : Window
                 ? (a.Event.AllDay ? $"{a.Event.Start:ddd d MMM}" : until.TotalHours < 12 ? $"in {Dur(until)}  ·  {Time(a.Event.Start)}" : $"{a.Event.Start:ddd} {Time(a.Event.Start)}")
                 : $"until {Time(a.Event.End)}";
 
-            var glyph = new TextBlock
-            {
-                Text = reminder ? "\uEA8F" : "\uE768",   // Ringer (bell) / Play
-                FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14,
-                Foreground = new SolidColorBrush(accent), Margin = new(0, 2, 10, 0), VerticalAlignment = VerticalAlignment.Top,
-            };
-            var text = new StackPanel();
-            text.Children.Add(new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-            text.Children.Add(Text(sub, 11.5, 0.75));
-            var row = new DockPanel();
-            DockPanel.SetDock(glyph, Dock.Left);
-            row.Children.Add(glyph); row.Children.Add(text);
-
-            var b = new Border
-            {
-                Child = row, CornerRadius = new(8), Padding = new(10, 6, 10, 7), Margin = new(0, 0, 0, 6), Cursor = System.Windows.Input.Cursors.Hand,
-                Background = new SolidColorBrush(Color.FromArgb(0x26, accent.R, accent.G, accent.B)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0xB0, accent.R, accent.G, accent.B)), BorderThickness = new(1),
-                ToolTip = "Click to dismiss",
-            };
+            var b = Banner(reminder ? "\uEA8F" : "\uE768", accent, title, sub);   // Ringer (bell) / Play
             b.MouseLeftButtonDown += (_, e) => { e.Handled = true; banners.Remove(a); Render(); };
             if (pulsed.Add(a))   // a gentle double pulse the first time it appears
                 b.BeginAnimation(OpacityProperty, new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
             Banners.Children.Add(b);
         }
+    }
+
+    Border Banner(string icon, Color accent, string title, string sub)
+    {
+        var glyph = new TextBlock
+        {
+            Text = icon, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14,
+            Foreground = new SolidColorBrush(accent), Margin = new(0, 2, 10, 0), VerticalAlignment = VerticalAlignment.Top,
+        };
+        var text = new StackPanel();
+        text.Children.Add(new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+        text.Children.Add(Text(sub, 11.5, 0.75));
+        var row = new DockPanel();
+        DockPanel.SetDock(glyph, Dock.Left);
+        row.Children.Add(glyph); row.Children.Add(text);
+        return new Border
+        {
+            Child = row, CornerRadius = new(8), Padding = new(10, 6, 10, 7), Margin = new(0, 0, 0, 6), Cursor = System.Windows.Input.Cursors.Hand,
+            Background = new SolidColorBrush(Color.FromArgb(0x26, accent.R, accent.G, accent.B)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0xB0, accent.R, accent.G, accent.B)), BorderThickness = new(1),
+            ToolTip = "Click to dismiss",
+        };
     }
 
     /// Menu → Alerts → Preview: one of each banner using the next event, so you can see what they look like.

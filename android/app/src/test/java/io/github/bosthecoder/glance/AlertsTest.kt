@@ -7,7 +7,8 @@ import org.junit.Test
 
 // Fails if: the heads-up window is computed from the wrong edge, all-day events leak into now/next,
 // alerts replay after a restart, a reminder fires twice, Up next shows the wrong count/order,
-// the side strip shows all-day events, or a release docks when it shouldn't (or the wrong way).
+// the side strip shows all-day events, a release docks when it shouldn't (or the wrong way),
+// the heads-up says Ending when something starts at that moment, or a release tag compares as text.
 class AlertsTest {
     private val t0 = 1_800_000_000_000L
     private fun ev(id: Long, startMin: Int, lenMin: Int, allDay: Boolean = false, reminders: List<Int> = emptyList()) =
@@ -51,6 +52,24 @@ class AlertsTest {
         assertEquals(Side.LEFT, dockSide(-130, w, screen, 0f, fling))          // over 40% past: dock left
         assertEquals(Side.RIGHT, dockSide(screen - 170, w, screen, 0f, fling)) // 130 of 300 past the right edge
         assertEquals(Side.LEFT, dockSide(screen - 170, w, screen, -2500f, fling))   // the throw wins over position
+    }
+
+    @Test fun comingPrefersStartOverEnd() {
+        val back2back = ev(5, 30, 30)                                   // starts the moment the meeting ends
+        assertEquals(Alert.Coming(back2back, true, meeting.end),
+            Plan.coming(events + back2back, meeting.end - 4 * MIN, 5))  // "Next:", not "Ending:"
+        assertEquals(Alert.Coming(meeting, false, meeting.end), Plan.coming(events, meeting.end - 4 * MIN, 5))   // lunch is later: "Ending:"
+        assertEquals(Alert.Coming(lunch, true, lunch.begin), Plan.coming(events, lunch.begin - 2 * MIN, 5))
+        assertEquals(null, Plan.coming(events, t0, 5))                 // 30m before anything changes
+    }
+
+    @Test fun releaseTagComparesNumerically() {
+        assertTrue(isNewer("v1.8.0", "1.7.1"))
+        assertTrue(isNewer("v1.10.0", "1.9.9"))      // 10 > 9, not "1" < "9"
+        assertTrue(isNewer("v2", "1.99.99"))
+        assertFalse(isNewer("v1.7.1", "1.7.1"))
+        assertFalse(isNewer("v1.7", "1.7.0"))
+        assertFalse(isNewer("v1.6.9", "1.7.0"))
     }
 
     @Test fun headsUpOnlyInLastMinutesBeforeChange() {

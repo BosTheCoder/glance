@@ -2,6 +2,7 @@ package io.github.bosthecoder.glance
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -24,6 +25,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.IntentCompat
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -35,6 +37,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var list: LinearLayout
     private val askPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { build() }
     private val overlaySettings = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { build() }
+    /** Back from "Install unknown apps": carry on with the update if it's now allowed. */
+    private val unknownSources = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        build(); release?.let { if (packageManager.canRequestPackageInstalls()) install(it) }
+    }
+
+    private var release: Update.Release? = null   // a newer release with an APK, once a check finds one
+    private var updateMsg: String? = null
+    private var updating = false
+    private lateinit var updateBox: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Dark page, so light status/nav bar icons whatever the system theme.
@@ -51,6 +62,71 @@ class MainActivity : ComponentActivity() {
             WindowInsetsCompat.CONSUMED
         }
         setContentView(page)
+        installStatus(intent)
+        check(quiet = true)   // so the button already says "Update to vX" if there is one
+    }
+
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); installStatus(intent) }
+
+    /** The install session's result (see [Update.install]). */
+    private fun installStatus(intent: Intent?) {
+        if (intent?.action != Update.ACTION) return
+        when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+            // Android wants the user to confirm; we're on screen, so show its dialog now.
+            PackageInstaller.STATUS_PENDING_USER_ACTION ->
+                IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)?.let { startActivity(it) }
+            PackageInstaller.STATUS_SUCCESS -> updateMsg = "Updated. Open Glance and tap Start if the widget has gone."
+            else -> updateMsg = "Update didn't install: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "unknown reason"}"
+        }
+        if (::updateBox.isInitialized) renderUpdate()
+    }
+
+    /** Ask GitHub for the latest release. [quiet]: only speak up if there's an update. */
+    private fun check(quiet: Boolean) {
+        if (!quiet) { updateMsg = "Checking…"; renderUpdate() }
+        thread {
+            val result = runCatching { Update.latest() }
+            runOnUiThread {
+                val mine = Update.version(this)
+                result.onSuccess { r ->
+                    when {
+                        isNewer(r.tag, mine) && r.apk != null -> { release = r; updateMsg = null }
+                        isNewer(r.tag, mine) -> if (!quiet) updateMsg = "${r.tag} is out, but its release has no Glance.apk"
+                        else -> if (!quiet) updateMsg = "You're on the latest (v$mine)"
+                    }
+                }.onFailure { if (!quiet) updateMsg = "Couldn't check for updates: ${it.message ?: "no connection?"}" }
+                if (::updateBox.isInitialized) renderUpdate()
+            }
+        }
+    }
+
+    private fun install(r: Update.Release) {
+        // Sideloaded apps need the user's one-off OK to install APKs (PackageManager.canRequestPackageInstalls).
+        if (!packageManager.canRequestPackageInstalls()) {
+            updateMsg = "Android needs your OK once: switch on \"Allow from this source\" for Glance, then come back."
+            renderUpdate()
+            unknownSources.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:$packageName".toUri()))
+            return
+        }
+        updating = true; updateMsg = "Downloading ${r.tag}…"; renderUpdate()
+        thread {
+            val result = runCatching { Update.install(applicationContext, r) }
+            runOnUiThread {
+                updating = false
+                updateMsg = result.fold({ "Confirm the update when Android asks." }, { "Update failed: ${it.message}" })
+                renderUpdate()
+            }
+        }
+    }
+
+    private fun renderUpdate() {
+        updateBox.removeAllViews()
+        val r = release
+        updateBox.addView(button(if (r != null) "Update to ${r.tag}" else "Check for updates", if (r != null) 0xFF1D4D3A.toInt() else 0xFF1A1A1E.toInt()) {
+            if (updating) return@button
+            if (r != null) install(r) else check(quiet = false)
+        })
+        updateMsg?.let { updateBox.addView(text(it, 12f, 0x99FFFFFF.toInt()).apply { maxLines = 4 }) }
     }
 
     override fun onResume() { super.onResume(); build() }
@@ -85,11 +161,16 @@ class MainActivity : ComponentActivity() {
         choice("Opacity at the side", listOf(25, 50, 75, 100), { "$it%" }, prefs.dockOpacity) { prefs.dockOpacity = it }
         choice("Idle opacity", listOf(25, 50, 75, 100), { "$it%" }, prefs.idleOpacity) { prefs.idleOpacity = it }
         choice("Heads-up before a change", listOf(2, 5, 10), { "$it min" }, prefs.headsUp) { prefs.headsUp = it }
-        toggle("Vibrate on reminders", prefs.vibrate) { prefs.vibrate = it }
+        toggle("Vibrate on reminders and heads-ups", prefs.vibrate) { prefs.vibrate = it }
         toggle("Start when the phone boots", prefs.onBoot) { prefs.onBoot = it }
         list.addView(button("Reset size", 0xFF1A1A1E.toInt()) { prefs.resetSize() }.apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
         })
+
+        header("Updates")
+        updateBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        list.addView(updateBox)
+        renderUpdate()
 
         list.addView(View(this), LinearLayout.LayoutParams(1, dp(20)))
         val running = OverlayService.running

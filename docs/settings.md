@@ -26,9 +26,9 @@ Everything in the right-click menu is saved to `settings.json` next to `Glance.e
 | `DaysAhead` | `7` | How far ahead to look. `0` means today only |
 | `Clock24` | `true` | 24-hour times |
 | `RefreshSeconds` | `60` | How often to check Google for changes. Google can't push updates to a desktop app, so Glance polls |
-| `HeadsUpMinutes` | `5` | Amber heads-up this many minutes before the current event ends or the next starts. `0` turns it off |
+| `HeadsUpMinutes` | `5` | Amber heads-up this many minutes before the current event ends or the next starts: a "Next: …" (or "Ending: …") banner, one pulse and a chime. `0` turns it off |
 | `Reminders` | `true` | Show events' own Google popup reminders as blue banners |
-| `Sound` | `"Reminders"` | `Off`, `Reminders` or `All` (starts too). Uses the Windows notification sound |
+| `Sound` | `"Reminders"` | `Off`, `Reminders` (heads-ups and reminders) or `All` (starts too). Uses the Windows notification sound |
 | `AlertsReveal` | `true` | Bring the widget back for an alert if you've hidden it |
 | `Left`, `Top` | `null` | Position. `null` means top-right of the primary screen |
 

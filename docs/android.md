@@ -43,8 +43,9 @@ Settings (same names as the Windows app):
 | **Opacity at the side** | 25/50/75/100% (default 75%): the strip's opacity while you're not touching it |
 | Idle opacity | 25/50/75/100%: the pill's or card's opacity after 3 seconds untouched |
 | Heads-up before a change | 2/5/10 minutes |
-| Vibrate on reminders | On/off |
+| Vibrate on reminders and heads-ups | On/off |
 | Start when the phone boots | On/off |
+| **Check for updates** (button, under Updates) | See [Updates](#updates) |
 | **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) |
 
 ### Full view
@@ -60,7 +61,7 @@ The strip shows **Items at the side** rows:
 - If something is on now, the first row is its title (bold, cut short if it's long), the time left ("23m left") and a thin bar in the event's colour.
 - The other rows are the next timed events: title, then when it starts and how long it lasts ("in 4m · 30m", or "Fri 09:00 · 30m" if it's more than 12 hours away). All-day events don't appear.
 
-It sits at **Opacity at the side** while you're not touching it. An alert brings it to full opacity and colours its outline (amber, green or blue) without undocking it; the row the alert is about says "▶ Now" or "🔔 in 10m". Drag the strip up or down to move it along the edge, pull it inwards to undock it and carry on dragging, or tap it to bring back the pill (or card in Full view). The strip's text sits clear of the back-gesture zone, so touches on it reach Glance rather than the system.
+It sits at **Opacity at the side** while you're not touching it. An alert brings it to full opacity and colours its outline (amber, green or blue) without undocking it; the row the alert is about says "▶ Now" or "🔔 in 10m", or turns amber for a heads-up. Drag the strip up or down to move it along the edge, pull it inwards to undock it and carry on dragging, or tap it to bring back the pill (or card in Full view). The strip's text sits clear of the back-gesture zone, so touches on it reach Glance rather than the system.
 
 ## Alerts
 
@@ -68,7 +69,7 @@ The alerts show inside the pill, card or side strip, not as system notifications
 
 | When | What you see |
 | --- | --- |
-| The last few minutes before the current event ends or the next one starts (the heads-up setting, 5 min by default) | The pill (or strip) comes back to full opacity, and its outline and countdown turn **amber** |
+| The last few minutes before the current event ends or the next one starts (the heads-up setting, 5 min by default) | An **amber** clock banner: "Next: *title* · in 4m" if something starts, or "Ending: *title* · in 4m" if the current event just ends (a start wins when both happen at once). It pulses once and vibrates once, and the outline and countdown turn amber. It stays until the change happens or you tap it away. If a blue reminder for the same event is already showing, that stays and you just get the pulse and vibration |
 | An event starts | A **green** "▶ Now: *title*" banner that pulses twice and stays about 20 seconds |
 | One of the event's own reminders is due | A **blue** bell banner, "*title* · in 10m", with one short vibration. It stays until you tap it or the event starts |
 
@@ -83,7 +84,15 @@ Glance reads Android's calendar provider (`CalendarContract`), the same local da
 - Reminders come from each event's own pop-up reminders (`Reminders` with method alert or default).
 - The queries run on a background thread and the result is handed to the main thread, so a slow provider can't freeze the pill.
 
-Nothing leaves the phone. The app has no internet permission.
+Your calendar never leaves the phone. The only network use is the update check below, which asks GitHub for the latest release.
+
+## Updates
+
+Open the settings screen and it quietly checks GitHub for a newer release. If there is one, the button under **Updates** reads **Update to v1.8.0**; otherwise it reads **Check for updates** and tapping it tells you whether you're on the latest. There's no checking in the background.
+
+Tapping **Update to …** downloads `Glance.apk` from that release, checks it against the SHA-256 digest GitHub publishes for it (and stops if they differ), and hands it to Android's installer, which asks you to confirm. The first time, Android sends you to **Install unknown apps**: switch on **Allow from this source** for Glance and go back, and the update carries on. The widget stops while it updates; open Glance and tap Start afterwards.
+
+This uses the `INTERNET` and `REQUEST_INSTALL_PACKAGES` permissions and Android's `PackageInstaller` session API (the install intent it replaced is deprecated). A release only installs over the current app if its `versionCode` is higher and it's signed with the same key.
 
 ## Build
 
@@ -114,13 +123,14 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 
 | File (under `android/app/src/`) | What's in it |
 | --- | --- |
-| `main/.../Model.kt` | Pure Kotlin, no Android: the `Ev` model, now/next, the side strip's rows and heads-up (`Plan`), where a release docks (`dockSide`), which alerts are due (`AlertTracker`), `dur()` |
+| `main/.../Model.kt` | Pure Kotlin, no Android: the `Ev` model, now/next, the side strip's rows, heads-up and its banner wording (`Plan`), where a release docks (`dockSide`), which alerts are due (`AlertTracker`), `isNewer()` for release tags, `dur()` |
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
 | `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/snap/throw-to-dock, alerts |
 | `main/.../MainActivity.kt` | Setup screen (edge to edge): permissions, calendar picker, settings, Start/Stop |
+| `main/.../Update.kt` | Check for updates: the GitHub releases API, the SHA-256 check and the `PackageInstaller` session |
 | `main/.../BootReceiver.kt` | Restarts the service after a reboot if "start on boot" is on |
 | `main/res/` | Bell and notification vectors, adaptive launcher icon (foreground cut from `assets/source.png`, background `#0B1030`) |
-| `test/.../AlertsTest.kt` | JVM tests for now/next, Up next, the side strip's rows, the dock decision, the heads-up window and alert de-duplication |
+| `test/.../AlertsTest.kt` | JVM tests for now/next, Up next, the side strip's rows, the dock decision, the heads-up window and banner, alert de-duplication and the release-tag compare |
 
 ## Notes
 
@@ -131,4 +141,4 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 - **Android 14+** requires a declared type for every foreground service. None of the specific types fit a floating widget, so Glance uses `specialUse` with a short explanation in the manifest. Starting it from `BOOT_COMPLETED` is still allowed on Android 15 (the new boot restriction covers data sync, camera, media, phone call and microphone services, not `specialUse`). If Android refuses to start it anyway, Glance logs it and stops quietly instead of crashing.
 - **Reminder vibration** uses the notification vibration usage, which Android requires for vibrating from the background, so it follows your phone's notification vibration setting.
 - **Some phones kill background apps anyway** (Samsung, Xiaomi, OnePlus, Huawei and others). If the pill vanishes after a while, set Glance's battery use to "Unrestricted" or add it to the battery exceptions. [dontkillmyapp.com](https://dontkillmyapp.com) has the steps for each brand.
-- After you install an update, open Glance and tap Start again.
+- After you install an update (from the settings screen or by hand), open Glance and tap Start again.

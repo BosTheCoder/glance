@@ -43,4 +43,19 @@ public class AlertsTests
         Assert.Equal(T.AddMinutes(15), Alerts.NextChange(events, T));   // deep work ends before lunch starts
         Assert.Null(Alerts.NextChange(events, T.AddHours(3)));            // all-day events never count
     }
+
+    [Fact]
+    public void Heads_up_names_whats_next_and_falls_back_to_what_ends()
+    {
+        var backToBack = new[] { Timed("Standup", -20, 30), Timed("Lunch", 10, 60) };
+        var h = Alerts.Coming(backToBack, T.AddMinutes(7), 5);
+        Assert.Equal(("Lunch", true), (h!.Event.Title, h.Starts));
+
+        var gapAfter = new[] { Timed("Standup", -20, 30), Timed("Lunch", 40, 60) };
+        h = Alerts.Coming(gapAfter, T.AddMinutes(7), 5);
+        Assert.Equal(("Standup", false), (h!.Event.Title, h.Starts));
+
+        Assert.Null(Alerts.Coming(backToBack, T.AddMinutes(2), 5));   // 8 min away
+        Assert.Null(Alerts.Coming(backToBack, T.AddMinutes(7), 0));   // turned off
+    }
 }

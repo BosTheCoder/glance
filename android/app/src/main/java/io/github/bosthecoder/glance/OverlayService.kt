@@ -147,6 +147,7 @@ class OverlayService : Service() {
     private var events = emptyList<Ev>()
     private var banner: Alert? = null
     private var bannerUntil = 0L
+    private var comingAt = -1L      // the change time the heads-up banner last fired for: once per change
     private var expanded = false
     private var full = false        // View = Full: the card is always shown, never collapsed
     private var docked = false      // shrunk to the side strip on the [right] edge
@@ -426,7 +427,16 @@ class OverlayService : Service() {
         h.removeCallbacks(tickR)
         val now = System.currentTimeMillis()
         for (a in tracker.due(events, now)) alert(a, now)
-        banner?.let { if (it is Alert.Starting && now >= bannerUntil || it is Alert.Reminder && now >= it.ev.begin) banner = null }
+        Plan.coming(events, now, prefs.headsUp)?.let {
+            if (it.at != comingAt) {
+                comingAt = it.at
+                // A blue reminder already on screen for the same event says it; just pulse and buzz.
+                alert(it, now, show = (banner as? Alert.Reminder)?.ev != it.ev)
+            }
+        }
+        banner?.let {
+            if (it is Alert.Starting && now >= bannerUntil || it is Alert.Reminder && now >= it.ev.begin || it is Alert.Coming && now >= it.at) banner = null
+        }
         render()
         // Wake for the next start/end/reminder/heads-up edge, and at least every 30 s for the countdown.
         var next = now + 30_000
@@ -435,17 +445,18 @@ class OverlayService : Service() {
         h.postDelayed(tickR, (next - now).coerceAtLeast(500))
     }
 
-    private fun alert(a: Alert, now: Long) {
-        banner = a
-        if (a is Alert.Starting) {
-            bannerUntil = now + 20_000
+    private fun alert(a: Alert, now: Long, show: Boolean = true) {
+        if (show) banner = a
+        if (a is Alert.Starting) bannerUntil = now + 20_000
+        if (a is Alert.Starting || a is Alert.Coming) {
             val sx = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.04f)
             val sy = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.04f)
             val al = PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.7f)
             ObjectAnimator.ofPropertyValuesHolder(listOf(pill, card, dock).first { it.visibility == View.VISIBLE }, sx, sy, al).apply {
-                duration = 260; repeatCount = 3; repeatMode = ValueAnimator.REVERSE; start()   // two pulses
+                duration = 260; repeatCount = if (a is Alert.Starting) 3 else 1; repeatMode = ValueAnimator.REVERSE; start()   // two pulses, or one
             }
-        } else if (prefs.vibrate) {
+        }
+        if (a !is Alert.Starting && prefs.vibrate) {
             val v = if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
             else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
             val once = VibrationEffect.createOneShot(120, VibrationEffect.DEFAULT_AMPLITUDE)
@@ -493,14 +504,17 @@ class OverlayService : Service() {
         val b = banner
         bannerRow.visibility = if (b == null) View.GONE else View.VISIBLE
         bannerGlyph.visibility = if (b is Alert.Starting) View.VISIBLE else View.GONE
-        bannerBell.visibility = if (b is Alert.Reminder) View.VISIBLE else View.GONE
+        bannerBell.visibility = if (b is Alert.Reminder || b is Alert.Coming) View.VISIBLE else View.GONE
+        bannerBell.setImageResource(if (b is Alert.Coming) R.drawable.ic_clock else R.drawable.ic_bell)
+        bannerBell.setColorFilter(if (b is Alert.Coming) AMBER else BLUE)
         bannerText.maxWidth = title.maxWidth + dp(40)
         bannerText.text = when (b) {
             is Alert.Starting -> "Now: ${b.ev.title}"
             is Alert.Reminder -> "${b.ev.title} · ${whenText(b.ev.begin, now)}"
+            is Alert.Coming -> "${if (b.starting) "Next" else "Ending"}: ${b.ev.title} · in ${dur(b.at - now)}"
             null -> ""
         }
-        val rim = when { b is Alert.Starting -> GREEN; b is Alert.Reminder -> BLUE; heads -> AMBER; else -> RIM }
+        val rim = when { b is Alert.Starting -> GREEN; b is Alert.Reminder -> BLUE; heads || b is Alert.Coming -> AMBER; else -> RIM }
         pillBg.setStroke(dp(1), rim); cardBg.setStroke(dp(1), rim); dockBg.setStroke(dp(1), rim)
 
         nextBox.removeAllViews()
@@ -526,6 +540,7 @@ class OverlayService : Service() {
             if (b?.ev == e) when (b) {   // the alert's own row says so, in the alert colour
                 is Alert.Starting -> { sub = "▶ Now"; subColor = GREEN }
                 is Alert.Reminder -> { sub = "🔔 ${whenText(e.begin, now)}"; subColor = BLUE }
+                is Alert.Coming -> subColor = AMBER
             }
             dock.addView(ui.text(e.title, if (on) 12.5f else 12f, if (on) Color.WHITE else 0xE6FFFFFF.toInt(), bold = on).apply {
                 if (i > 0) setPadding(0, dp(6), 0, 0)

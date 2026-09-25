@@ -44,6 +44,8 @@
 
 Want to try it without Google first? Run `Glance.exe --demo`.
 
+**Updating:** right-click → **Check for updates**. When there's a new release, the widget also says so and one click installs it. On Android it's under **Settings → Check for updates**.
+
 ### Android
 
 Download **`Glance.apk`** from the same release. It floats over your apps as a small pill, tucks against the screen edge when you're not using it, and uses the calendars your phone already syncs, so there's no Google setup. See **[docs/android.md](docs/android.md)**.
@@ -68,11 +70,11 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 
 | Colour | Means | Goes away |
 | --- | --- | --- |
-| **Amber** countdown and edge | What you're doing changes within 5 min (current event ends or the next one starts) | When the change happens |
+| **Amber 🕒 Next: …** | What you're doing changes within 5 min: the next event starts, or the current one ends. It pulses once and chimes | When the change happens, or click it |
 | **Green ▶ Now: …** | An event just started | Once you've hovered the widget |
 | **Blue 🔔** | One of the event's own reminders (the popup reminders you set in Google Calendar) | Click it, or when the event starts |
 
-While an alert is showing, the widget stays fully visible. If it was hidden, it comes back. Reminders play the Windows notification sound, and you can turn that off. Everything is under right-click → **Alerts**, including **Preview alerts** so you can see them.
+While an alert is showing, the widget stays fully visible. If it was hidden, it comes back. Heads-ups and reminders play the Windows notification sound, and you can turn that off. Everything is under right-click → **Alerts**, including **Preview alerts** so you can see them.
 
 <br clear="right">
 
