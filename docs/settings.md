@@ -26,6 +26,9 @@ Everything in the right-click menu is saved to `settings.json` next to `Glance.e
 | `MaxEvents` | `10` | Events in the expanded list. `0` means all |
 | `DaysAhead` | `7` | How far ahead to look. `0` means today only |
 | `Clock24` | `true` | 24-hour times |
+| `Travel` | `true` | Public transport times for "Travel" events ([docs/travel.md](travel.md)) |
+| `TravelBuffer` | `5` | Minutes to get ready, taken off each departure to give the leave time |
+| `Places` | `null` | Extra named places for travel events, e.g. `{"Gym": "PureGym, 1 High St, London E16 1AA"}`. They override places learned from your calendar |
 | `RefreshSeconds` | `60` | How often to check Google for changes. Google can't push updates to a desktop app, so Glance polls |
 | `HeadsUpMinutes` | `5` | Amber heads-up this many minutes before the current event ends or the next starts: a "Next: …" (or "Ending: …") banner, one pulse and a chime. `0` turns it off |
 | `Reminders` | `true` | Show events' own Google popup reminders as blue banners |

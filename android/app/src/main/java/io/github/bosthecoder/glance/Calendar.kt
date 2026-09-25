@@ -47,7 +47,7 @@ object Cal {
         ctx.contentResolver.query(
             uri,
             arrayOf(Instances._ID, Instances.EVENT_ID, Instances.TITLE, Instances.BEGIN, Instances.END,
-                Instances.ALL_DAY, Instances.DISPLAY_COLOR, Instances.SELF_ATTENDEE_STATUS),
+                Instances.ALL_DAY, Instances.DISPLAY_COLOR, Instances.SELF_ATTENDEE_STATUS, Instances.EVENT_LOCATION),
             "${Instances.CALENDAR_ID} IN (${calendarIds.joinToString()})", null, "${Instances.BEGIN} ASC",
         )?.use { c ->
             while (c.moveToNext()) {
@@ -57,7 +57,7 @@ object Cal {
                 fun t(ms: Long) = if (allDay) Instant.ofEpochMilli(ms).atOffset(ZoneOffset.UTC).toLocalDate()
                     .atStartOfDay(zone).toInstant().toEpochMilli() else ms
                 rows += c.getLong(1) to Ev(c.getLong(0), c.getString(2)?.takeIf { it.isNotBlank() } ?: "(no title)",
-                    t(c.getLong(3)), t(c.getLong(4)), allDay, c.getInt(6))
+                    t(c.getLong(3)), t(c.getLong(4)), allDay, c.getInt(6), location = c.getString(8)?.takeIf { it.isNotBlank() })
             }
         }
         val reminders = reminders(ctx, rows.map { it.first }.toSet())
@@ -89,6 +89,9 @@ class Prefs(ctx: Context) {
     var idleOpacity: Int get() = sp.getInt("idleOpacity", 50); set(v) = sp.edit { putInt("idleOpacity", v) }
     var headsUp: Int get() = sp.getInt("headsUp", 5); set(v) = sp.edit { putInt("headsUp", v) }
     var vibrate: Boolean get() = sp.getBoolean("vibrate", true); set(v) = sp.edit { putBoolean("vibrate", v) }
+    /** Travel events: look up public transport times (docs/travel.md), leaving [travelBuffer] min to get ready. */
+    var travel: Boolean get() = sp.getBoolean("travel", true); set(v) = sp.edit { putBoolean("travel", v) }
+    var travelBuffer: Int get() = sp.getInt("travelBuffer", 5); set(v) = sp.edit { putInt("travelBuffer", v) }
     var nextCount: Int get() = sp.getInt("nextCount", 1); set(v) = sp.edit { putInt("nextCount", v) }
     /** "Compact": pill that expands on tap. "Full": the expanded card, always. */
     var view: String get() = sp.getString("view", "Compact")!!; set(v) = sp.edit { putString("view", v) }
@@ -111,5 +114,8 @@ class Prefs(ctx: Context) {
 }
 
 fun canOverlay(ctx: Context) = Settings.canDrawOverlays(ctx)
+fun canLocate(ctx: Context) =
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 fun canNotify(ctx: Context) = Build.VERSION.SDK_INT < 33 ||
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

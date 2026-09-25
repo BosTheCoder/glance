@@ -10,6 +10,7 @@
     <Compile Include="../Model.cs" />
     <Compile Include="../Alerts.cs" />
     <Compile Include="../Docking.cs" />
+    <Compile Include="../Travel.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

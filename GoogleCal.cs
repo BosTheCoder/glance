@@ -198,7 +198,7 @@ public class GoogleCal
             var reminders = (bool?)r?["useDefault"] == false ? Popups(r?["overrides"]) : cal.DefaultReminders;
             var link = (string?)e["htmlLink"];
             if (link != null && account != null) link += (link.Contains('?') ? "&" : "?") + "authuser=" + Uri.EscapeDataString(account);
-            list.Add(new Ev((string?)e["summary"] ?? "(busy)", When(e["start"]!), When(e["end"]!), allDay, cal.Color, reminders, link));
+            list.Add(new Ev((string?)e["summary"] ?? "(busy)", When(e["start"]!), When(e["end"]!), allDay, cal.Color, reminders, link, (string?)e["location"]));
         }
         return list;
     }

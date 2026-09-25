@@ -17,8 +17,8 @@ android {
         applicationId = "io.github.bosthecoder.glance"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.11.0"
+        versionCode = 12
+        versionName = "1.12.0"
     }
 
     signingConfigs {

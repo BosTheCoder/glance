@@ -11,7 +11,8 @@ It reads the calendars your phone already syncs from your Google account, so the
 3. Open Glance and tap each **Grant** button:
    - **Calendar access**, so it can read your events.
    - **Display over other apps**. This opens a system screen: find Glance and switch it on, then go back.
-   - **Notifications** (Android 13+). The only notification is the quiet "Glance is floating" one that keeps it running.
+   - **Notifications** (Android 13+). You get the quiet "Glance is floating" one that keeps it running, and the pop-ups when events start.
+   - **Location (for travel times)**, optional. Travel times then start from where the phone is (see [Travel times](#travel-times)).
 4. Tick the calendars you want. By default it picks the ones that are visible in your calendar app.
 5. Tap **Start floating widget**.
 
@@ -47,6 +48,8 @@ Settings (same names as the Windows app):
 | Heads-up before a change | 2/5/10 minutes |
 | Vibrate on reminders and heads-ups | On/off. Starts use the pop-up's own vibration instead |
 | **Pop-up when events start** (button) | Android's settings for the pop-up: sound, vibration, on/off |
+| **Travel times** | On/off (default on): public transport times for "Travel" events, see [Travel times](#travel-times) |
+| **Get-ready time** | 0/3/5/10 min (default 5): taken off each departure to give the leave time |
 | Start when the phone boots | On/off |
 | **Check for updates** (button, under Updates) | See [Updates](#updates) |
 | **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) and the pill back to sizing itself to its text (up to 60% of the screen). Up next isn't changed |
@@ -80,6 +83,14 @@ The alerts show inside the pill, card or side strip, and each kind has its own c
 
 Each alert fires once. After a restart it only fires alerts that were due in the last 2 minutes, so it doesn't replay the morning's.
 
+## Travel times
+
+Any timed event whose title starts with "Travel" gets the next public transport options from TfL. The rules for where a trip starts and ends are the same as on Windows, in [docs/travel.md](travel.md).
+
+- **In the pill and on agenda rows**, a travel event shows "🚆 leave 16:44" where other rows show their length. It turns amber once leaving is within the heads-up time.
+- **In the open card**, a row of times sits under each travel event: "16:44 → 17:25". The one to catch is outlined, and ones that arrive after the event ends are dimmed. Tap a time to open the trip in Citymapper (the app if it's installed), set to arrive by the end of the event. **Later** adds three more. Without TfL times (outside London, or an address with no postcode) there's a **Directions** chip for Google Maps instead.
+- **Your location** is used for a trip that starts within 90 minutes, if you've granted it. It's one fix at a time from Android's own location service (fused on Android 12+, else network, else GPS), rounded to about 100 m, and only sent to TfL. Without it, or without a fix, the start comes from your calendar.
+
 ## How it gets your calendar
 
 Glance reads Android's calendar provider (`CalendarContract`), the same local database your calendar app uses. Your Google account syncs into it, so edits in Google show up as soon as the phone syncs. Glance listens for changes, so it updates within a second of that and re-reads every 30 seconds for the countdowns.
@@ -89,7 +100,7 @@ Glance reads Android's calendar provider (`CalendarContract`), the same local da
 - Reminders come from each event's own pop-up reminders (`Reminders` with method alert or default).
 - The queries run on a background thread and the result is handed to the main thread, so a slow provider can't freeze the pill.
 
-Your calendar never leaves the phone. The only network use is the update check below, which asks GitHub for the latest release.
+Your calendar never leaves the phone. The network is used for the update check below (GitHub), and for travel times: the two ends of each trip (postcodes, or your rounded location) and its time go to TfL's Journey Planner.
 
 ## Updates
 
@@ -145,6 +156,7 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 - **Opening events** uses the Calendar Provider's documented view intent (`ACTION_VIEW` on the event's `Events` URI, with the occurrence's begin and end times so a repeating event opens on the right day). Starting an activity from the floating window is allowed because Glance holds "Display over other apps", one of Android's background-activity-start exemptions. If no calendar app can open it, you get a short message instead.
 - **Throwing.** Glance measures the release speed with `VelocityTracker`. Anything faster than 800 dp/s counts as a throw. The glide is a low-stiffness, no-bounce `SpringAnimation` sideways and a `FlingAnimation` with friction up and down, both from AndroidX `dynamicanimation`.
 - **Android 14+** requires a declared type for every foreground service. None of the specific types fit a floating widget, so Glance uses `specialUse` with a short explanation in the manifest. Starting it from `BOOT_COMPLETED` is still allowed on Android 15 (the new boot restriction covers data sync, camera, media, phone call and microphone services, not `specialUse`). If Android refuses to start it anyway, Glance logs it and stops quietly instead of crashing.
+- **Location for travel times** is foreground-only: there's no "Allow all the time" permission. Android counts a foreground service of type `location` as foreground use ([location permissions](https://developer.android.com/develop/sensors-and-location/location/permissions)), so the widget's service adds that type when it can. Android only allows adding it while Glance's screen is open ([while-in-use restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)), not when the widget starts at boot or after an update. Opening Glance once afterwards turns it back on; until then travel times start from your calendar.
 - **Reminder vibration** uses the notification vibration usage, which Android requires for vibrating from the background, so it follows your phone's notification vibration setting.
 - **Pop-ups** use a high-importance notification channel, which is how Android shows heads-up notifications. A channel's sound and vibration can't be changed by the app once it exists, so they live in Android's channel settings.
 - **Some phones kill background apps anyway** (Samsung, Xiaomi, OnePlus, Huawei and others). If the pill vanishes after a while, set Glance's battery use to "Unrestricted" or add it to the battery exceptions. [dontkillmyapp.com](https://dontkillmyapp.com) has the steps for each brand.

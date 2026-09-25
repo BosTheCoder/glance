@@ -36,6 +36,11 @@ class MainActivity : ComponentActivity() {
     private lateinit var prefs: Prefs
     private lateinit var list: LinearLayout
     private val askPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { build() }
+    /** Location for travel times; a running widget restarts its foreground service to pick up the location type. */
+    private val askLocation = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (OverlayService.running && canLocate(this)) OverlayService.start(this)
+        build()
+    }
     private val overlaySettings = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { build() }
     /** Back from "Install unknown apps": carry on with the update if it's now allowed. */
     private val unknownSources = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -129,7 +134,13 @@ class MainActivity : ComponentActivity() {
         updateMsg?.let { updateBox.addView(text(it, 12f, 0x99FFFFFF.toInt()).apply { maxLines = 4 }) }
     }
 
-    override fun onResume() { super.onResume(); build() }
+    override fun onResume() {
+        super.onResume()
+        // The widget can only use your location while this screen has been seen since it started (Android's while-in-use rule),
+        // so opening Glance re-promotes it (see OverlayService.onStartCommand).
+        if (OverlayService.running && canLocate(this)) OverlayService.start(this)
+        build()
+    }
 
     private fun openOverlaySettings() =
         overlaySettings.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$packageName".toUri()))
@@ -144,6 +155,9 @@ class MainActivity : ComponentActivity() {
         permission("Display over other apps", canOverlay(this)) { openOverlaySettings() }
         if (Build.VERSION.SDK_INT >= 33)
             permission("Notifications", canNotify(this)) { askPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        permission("Location (for travel times)", canLocate(this)) {
+            askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
 
         header("Calendars")
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -167,6 +181,8 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, packageName).putExtra(Settings.EXTRA_CHANNEL_ID, OverlayService.STARTS))
         }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
+        toggle("Travel times", prefs.travel) { prefs.travel = it }
+        choice("Get-ready time", listOf(0, 3, 5, 10), { "$it min" }, prefs.travelBuffer) { prefs.travelBuffer = it }
         toggle("Start when the phone boots", prefs.onBoot) { prefs.onBoot = it }
         list.addView(button("Reset size", 0xFF1A1A1E.toInt()) { prefs.resetSize() }.apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)

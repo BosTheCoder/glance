@@ -75,6 +75,12 @@ public partial class MainWindow
         }));
         m.Items.Add(Toggle("24-hour clock", s.Clock24, v => s.Clock24 = v));
 
+        var travel = new MenuItem { Header = "Travel times" };
+        travel.Items.Add(Toggle("For \"Travel\" events", s.Travel, v => { s.Travel = v; _ = LoadTrips(); }));
+        travel.Items.Add(Choice("Get-ready time", new[] { ("None", 0), ("3 minutes", 3), ("5 minutes", 5), ("10 minutes", 10) }, s.TravelBuffer, v => s.TravelBuffer = v));
+        travel.Items.Add(Action("Named places… (edit Places in settings.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
+        m.Items.Add(travel);
+
         var alerts = new MenuItem { Header = "Alerts" };
         alerts.Items.Add(Choice("Heads-up before changes", new[] { ("Off", 0), ("2 minutes", 2), ("5 minutes", 5), ("10 minutes", 10) }, s.HeadsUpMinutes, v => s.HeadsUpMinutes = v));
         alerts.Items.Add(Toggle("Event reminders", s.Reminders, v => s.Reminders = v));

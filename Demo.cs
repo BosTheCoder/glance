@@ -11,7 +11,7 @@ static class Demo
         var h = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0);
         var m = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0);
         const string link = "https://calendar.google.com/calendar/r";   // clicking a demo event opens Google Calendar itself
-        Ev E(string title, double startH, double lenH, string color) => new(title, h.AddHours(startH), h.AddHours(startH + lenH), false, color, null, link);
+        Ev E(string title, double startH, double lenH, string color, string? place = null) => new(title, h.AddHours(startH), h.AddHours(startH + lenH), false, color, null, link, place);
         Ev M(string title, double startMin, double lenMin, string color, params int[] reminders) =>
             new(title, m.AddMinutes(startMin), m.AddMinutes(startMin + lenMin), false, color, reminders, link);
         return new()
@@ -22,6 +22,9 @@ static class Demo
             new("Bin day", now.Date.AddDays(2), now.Date.AddDays(3), true, "#9E9E9E"),
             M("Design sync", 0, 30, "#7986CB"),
             M("Coffee with Ana", 4, 30, "#33B679", 5),
+            // Travel times: the office trip has no start of its own, so it sets off from "home", learned from the trip home.
+            E("Travel: to Office", 1.25, 0.75, "#9E69AF", "The British Library, 96 Euston Rd, London NW1 2DB"),
+            E("Travel: Home", 6, 0.75, "#9E69AF", "Canary Wharf, London E14 5AB"),
             E("Lunch", 1, 1, "#F6BF26"),
             E("1:1 with Sam", 2, 0.5, "#E67C73"),
             E("Gym", 3.5, 1.25, "#8E24AA"),

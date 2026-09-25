@@ -13,6 +13,8 @@ import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.annotation.SuppressLint
+import android.location.LocationManager
 import android.database.ContentObserver
 import android.graphics.Canvas
 import android.graphics.Color
@@ -58,6 +60,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
+import androidx.core.location.LocationManagerCompat
+import androidx.core.net.toUri
 import androidx.dynamicanimation.animation.FlingAnimation
 import androidx.dynamicanimation.animation.FloatValueHolder
 import androidx.dynamicanimation.animation.SpringAnimation
@@ -187,6 +191,17 @@ class OverlayService : Service() {
     private lateinit var prefs: Prefs
     private val h = Handler(Looper.getMainLooper())
     private val tracker = AlertTracker()
+    /** Travel times per [Trip.key]; kept across renders and refreshed on the schedule in docs/travel.md. */
+    private class Times(var answer: Tfl.Answer? = null, var fetched: Long = 0, var failed: Long = 0, var busy: Boolean = false)
+    private val times = HashMap<String, Times>()
+    /** A travel event with both ends worked out. [key]: the TfL codes and the arrive-by time. */
+    private data class Trip(val ev: Ev, val from: String, val to: String) {
+        val fc = Travel.code(from); val tc = Travel.code(to)
+        val key = "$fc|$tc|${ev.end}"
+    }
+    private var here: String? = null   // the phone's last fix, "lat,lon" to ~100 m so small moves keep the same trip key
+    private var hereAt = 0L
+    private var locating = false
     private var events = emptyList<Ev>()
     private var banner: Alert? = null
     private var bannerUntil = 0L
@@ -265,7 +280,11 @@ class OverlayService : Service() {
     private fun clampY(y: Int, height: Int): Int { val e = edges(); return y.coerceIn(0, maxOf(0, H - e.top - e.bottom - height)) }
 
     override fun onBind(intent: Intent?) = null
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Started again from the app (see MainActivity.onResume): it's in the foreground now, so the location type can be added.
+        if (running && ::wm.isInitialized) foreground()
+        return START_STICKY
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -320,10 +339,19 @@ class OverlayService : Service() {
             .setContentIntent(open)
             .setOngoing(true)
             .build()
+        // ServiceCompat drops the types an API level doesn't have (specialUse is 34+, location 29+).
+        @Suppress("InlinedApi") val special = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         return try {
-            // ServiceCompat drops the type below API 34, where specialUse doesn't exist.
-            @Suppress("InlinedApi")
-            ServiceCompat.startForeground(this, 1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            try {
+                // With the location type, travel times can use the phone's location while you're in another app: Android
+                // counts a location-type foreground service as foreground use, so no "all the time" permission is needed.
+                @Suppress("InlinedApi")
+                ServiceCompat.startForeground(this, 1, n, if (canLocate(this)) special or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else special)
+            } catch (e: SecurityException) {
+                // Android 14+ only allows the location type while the app is on screen, not from boot or after an update.
+                // Travel times fall back to the calendar until Glance is next opened.
+                ServiceCompat.startForeground(this, 1, n, special)
+            }
             true
         } catch (e: IllegalStateException) {   // ForegroundServiceStartNotAllowedException on API 31+
             Log.w("Glance", "Android refused the foreground service", e)
@@ -474,6 +502,7 @@ class OverlayService : Service() {
         h.removeCallbacks(tickR)
         val now = System.currentTimeMillis()
         for (a in tracker.due(events, now)) alert(a, now)
+        refreshTrips(now)
         Plan.coming(events, now, prefs.headsUp)?.let {
             if (it.at != comingAt) {
                 comingAt = it.at
@@ -533,6 +562,141 @@ class OverlayService : Service() {
             .build()
         try { nm.notify("start", e.id.toInt(), n) } catch (_: SecurityException) { return false }   // permission revoked just now
         return true
+    }
+
+    // ---------- travel ----------
+
+    private fun trip(e: Ev, now: Long): Trip? {
+        if (!prefs.travel || !Travel.isTravel(e)) return null
+        val zone = ZoneId.systemDefault()
+        val places = Travel.places(events)
+        val to = Travel.destination(e, events, places, zone) ?: return null
+        val from = Travel.origin(e, events, places, zone, here?.takeIf { now - hereAt < 10 * MIN }, now) ?: return null
+        return Trip(e, from, to).takeIf { !from.equals(to, ignoreCase = true) && (it.fc == null || it.fc != it.tc) }
+    }
+
+    /** Look up times for trips starting within 12 h: every 5 min within 2 h of the start, hourly before, 5 min after a failure. */
+    private fun refreshTrips(now: Long) {
+        if (!prefs.travel) return
+        times.keys.removeAll { it.substringAfterLast('|').toLong() < now }
+        val soon = events.filter { Travel.isTravel(it) && it.end > now && it.begin < now + 12 * 60 * MIN }
+        if (soon.any { it.begin - now <= 90 * MIN } && now - hereAt > 5 * MIN) locate()
+        for (e in soon) {
+            val t = trip(e, now) ?: continue
+            if (t.fc == null || t.tc == null) continue   // no postcode: the Directions link instead
+            val st = times.getOrPut(t.key) { Times() }
+            val ttl = if (e.begin - now <= 120 * MIN) 5 * MIN else 60 * MIN
+            if (!st.busy && now - st.fetched >= ttl && now - st.failed >= 5 * MIN) fetch(st, t, null)
+        }
+    }
+
+    /** Ask TfL on [io]. [after] null: journeys arriving by the trip's end, topped up with ones leaving now if fewer than 3 are left; else 3 more leaving after it. */
+    private fun fetch(st: Times, t: Trip, after: Long?) {
+        val fc = t.fc ?: return; val tc = t.tc ?: return
+        st.busy = true
+        val buffer = prefs.travelBuffer
+        val old = st.answer
+        io.execute {
+            val now = System.currentTimeMillis()
+            val r = runCatching {
+                if (after != null) Tfl.journeys(fc, tc, after, arriving = false)
+                    ?.let { Tfl.Answer((old?.journeys.orEmpty() + it.journeys), old?.start ?: it.start, old?.end ?: it.end) } ?: old
+                else Tfl.journeys(fc, tc, t.ev.end, arriving = true)?.let { a ->
+                    if (Travel.options(a.journeys, now, buffer).size >= 3) a
+                    else Tfl.journeys(fc, tc, now + buffer * MIN, arriving = false)?.let { Tfl.Answer(a.journeys + it.journeys, a.start, a.end) } ?: a
+                }
+            }
+            h.post {
+                if (io.isShutdown) return@post
+                st.busy = false
+                r.onSuccess { st.answer = it; if (after == null) st.fetched = now }.onFailure { st.failed = now }
+                render()
+            }
+        }
+    }
+
+    /** One fix from the platform's location service (no Play Services): fused on Android 12+, else network, else GPS. */
+    @SuppressLint("MissingPermission")   // checked by canLocate; a revoke in between is caught
+    private fun locate() {
+        if (locating || !canLocate(this)) return
+        val lm = getSystemService(LocationManager::class.java)
+        val provider = when {
+            Build.VERSION.SDK_INT >= 31 && lm.hasProvider(LocationManager.FUSED_PROVIDER) -> LocationManager.FUSED_PROVIDER
+            lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+            lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+            else -> return
+        }
+        locating = true
+        try {
+            LocationManagerCompat.getCurrentLocation(lm, provider, null as android.os.CancellationSignal?, ContextCompat.getMainExecutor(this)) { loc: android.location.Location? ->
+                locating = false
+                if (loc != null && !io.isShutdown) {
+                    here = String.format(Locale.ROOT, "%.3f,%.3f", loc.latitude, loc.longitude)
+                    hereAt = System.currentTimeMillis()
+                    refreshTrips(hereAt)
+                }
+            }
+        } catch (_: SecurityException) { locating = false }
+    }
+
+    /** The leave time a travel row shows at a glance: for the one to catch, else the next one. Null without times. */
+    private fun leave(e: Ev, now: Long): Long? {
+        val t = trip(e, now) ?: return null
+        val opts = Travel.options(times[t.key]?.answer?.journeys.orEmpty(), now, prefs.travelBuffer)
+        val j = Travel.catch(opts, e.end) ?: opts.firstOrNull() ?: return null
+        return j.depart - prefs.travelBuffer * MIN
+    }
+
+    /** "🚆 leave 16:44" in place of a travel row's length; amber once leaving is within the heads-up time. */
+    private fun leaveText(e: Ev, now: Long): TextView? = leave(e, now)?.let { l ->
+        val color = if (l - now <= prefs.headsUp * MIN) AMBER else 0x80FFFFFF.toInt()
+        ui.text("leave ${hm(l)}", 12f, color).apply {
+            setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_train, 0, 0, 0)
+            compoundDrawablePadding = dp(3); compoundDrawableTintList = ColorStateList.valueOf(color)
+            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) }
+        }
+    }
+
+    /**
+     * The open card's times under a travel row: "16:44 → 17:25" per option (the one to catch outlined, ones that arrive
+     * late dimmed) and Later; each opens Citymapper arriving by the end. Without TfL times, a Directions link to Google Maps.
+     */
+    private fun timesRow(e: Ev, now: Long): View? {
+        val t = trip(e, now) ?: return null
+        val st = times[t.key]
+        val buffer = prefs.travelBuffer
+        val opts = Travel.options(st?.answer?.journeys.orEmpty(), now, buffer)
+        val noTimes = t.fc == null || t.tc == null || (st != null && st.fetched > 0 && !st.busy && st.answer?.journeys.isNullOrEmpty())
+        if (opts.isEmpty() && !noTimes) return null   // still looking
+        val box = WrapLayout(ui, dp(5), dp(5)).apply { setPadding(dp(16), dp(2), 0, dp(6)) }
+        if (opts.isEmpty()) { box.addView(timeChip("Directions") { openUrl(Travel.googleMaps(t.from, t.to)) }); return box }
+        val a = st!!.answer!!
+        val start = a.start; val end = a.end
+        val link = if (start != null && end != null) Travel.citymapper(start, end, t.to, e.end, ZoneId.systemDefault()) else Travel.googleMaps(t.from, t.to)
+        val c = Travel.catch(opts, e.end)
+        for (j in opts) box.addView(timeChip("${hm(j.depart - buffer * MIN)} → ${hm(j.arrive)}", outline = j == c, dim = j.arrive > e.end) { openUrl(link) })
+        box.addView(timeChip("Later") { if (!st.busy) fetch(st, t, opts.last().depart + MIN) })
+        return box
+    }
+
+    private fun timeChip(s: String, outline: Boolean = false, dim: Boolean = false, onClick: () -> Unit) = ui.text(s, 11.5f, Color.WHITE).apply {
+        background = GradientDrawable().apply {
+            cornerRadius = dp(9).toFloat(); setColor(CARD)
+            if (outline) setStroke(dp(1), 0xB3FFFFFF.toInt())
+        }
+        setPadding(dp(8), dp(3), dp(8), dp(4))
+        foreground = ripple(9); setOnClickListener { onClick() }
+        if (dim) alpha = 0.5f
+        layoutParams = ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+    }
+
+    private fun openUrl(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))   // Citymapper's app takes its links if installed
+            collapse()
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(ui, "No app to open directions", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun alerting() = banner != null || Plan.headsUp(events, System.currentTimeMillis(), prefs.headsUp)
@@ -655,7 +819,7 @@ class OverlayService : Service() {
         addView(ui.text(if (day(e.begin) == day(now)) hm(e.begin) else fmt(e.begin, "EEE HH:mm"), 12f, 0x99FFFFFF.toInt()),
             LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(8) })
         addView(ui.text(e.title, 12.5f, Color.WHITE).apply { maxWidth = title.maxWidth }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        addView(length(e))
+        addView(leaveText(e, now) ?: length(e))
     }
 
     /** Muted "30m" / "1h 15m" at the end of an upcoming row. The title before it takes weight 1, so it ellipsizes first. */
@@ -667,14 +831,14 @@ class OverlayService : Service() {
         letterSpacing = 0.06f; setPadding(0, dp(top), 0, dp(2))
     }
 
-    private fun row(e: Ev) = LinearLayout(ui).apply {
+    private fun row(e: Ev, now: Long) = LinearLayout(ui).apply {
         gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(3), 0, dp(3))
         background = ripple(); setOnClickListener { openEvent(e) }
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(8) })
         addView(ui.text(if (e.allDay) "all day" else hm(e.begin), 12f, 0x99FFFFFF.toInt()), LinearLayout.LayoutParams(dp(48), WRAP_CONTENT))
         addView(ui.text(e.title, 13f, Color.WHITE), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        if (!e.allDay) addView(length(e))
+        if (!e.allDay) addView(leaveText(e, now) ?: length(e))
     }
 
     private fun nowCard(e: Ev, now: Long) = LinearLayout(ui).apply {
@@ -712,13 +876,14 @@ class OverlayService : Service() {
             allDay.forEach { addView(chip(it, today), ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)) }
         })
 
-        cur.forEach { body.addView(nowCard(it, now)) }
+        cur.forEach { body.addView(nowCard(it, now)); timesRow(it, now)?.let(body::addView) }
         if (cur.isEmpty()) body.addView(ui.text(freeText(up, now), 15f, 0xCCFFFFFF.toInt()).apply { setPadding(0, 0, 0, dp(4)) })
 
         val next = Plan.next(events, now, prefs.nextCount)
         next.firstOrNull()?.let {
             val t = if (it.begin - now < 12 * 60 * MIN) "IN ${dur(it.begin - now)}" else fmt(it.begin, "EEE HH:mm")
-            body.addView(label("NEXT  ·  ${t.uppercase()}", top = 4)); next.forEach { e -> body.addView(row(e)) }
+            body.addView(label("NEXT  ·  ${t.uppercase()}", top = 4))
+            next.forEach { e -> body.addView(row(e, now)); timesRow(e, now)?.let(body::addView) }
         }
 
         val later = events.filter { it.allDay && day(it.begin) > today }
@@ -729,7 +894,7 @@ class OverlayService : Service() {
                 d = day(e.begin)
                 body.addView(label(if (d == today.plusDays(1)) "TOMORROW" else fmt(e.begin, "EEEE d MMM").uppercase(), top = 10))
             }
-            body.addView(row(e))
+            body.addView(row(e, now)); timesRow(e, now)?.let(body::addView)
         }
         if (rest.isEmpty()) body.addView(ui.text("Nothing else coming up", 12f, 0x80FFFFFF.toInt()).apply { setPadding(0, dp(10), 0, 0) })
     }

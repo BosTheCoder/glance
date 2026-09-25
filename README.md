@@ -29,6 +29,7 @@
 - **Hover to expand** into a scrollable agenda for the days ahead. When you move away it shrinks back and the scroll resets.
 - **Throw it to the side or the top** to get it out of the way. It glides to that screen edge as a slim strip that still shows what's on, the time left and what's next. Click it to bring it back.
 - **Every upcoming event shows how long it lasts**, so you can plan around it.
+- **Travel times.** A "Travel: …" event shows when to leave. Expanded, it lists the next public transport options from TfL, and clicking one opens the trip in Citymapper. See [docs/travel.md](docs/travel.md).
 - **Fades when idle.** It's see-through while you work and turns solid when you hover it.
 - **Acrylic glass** in 7 themes, three glass strengths and any custom colour.
 - **Drag to move, drag the corner to resize.** It can be pinned on top and it remembers where you put it.

@@ -55,6 +55,11 @@ public partial class MainWindow : Window
     HeadsUp? coming;
     DateTime? headsUpFor, headsUpDismissed;   // the change we last alerted for / had its banner clicked away
     readonly FileSystemWatcher watcher = new(AppContext.BaseDirectory, "settings.json");
+    // Travel times, per trip (from|to|arrive-by). Options empty = no times, just a link to directions.
+    record Trip(List<Journey> Options, string Link, DateTime Fetched, bool Failed, string From, string To, DateTime By);
+    readonly Dictionary<string, Trip> trips = new();
+    Dictionary<string, string> places = new();
+    bool tripsBusy;
 
     public MainWindow(bool demo)
     {
@@ -145,9 +150,9 @@ public partial class MainWindow : Window
             }
             else if (Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4) { Undock(); return; }   // a click brings it back
             // Only in the settled, focused view: a click that lands as the widget is still expanding under the pointer isn't aimed.
-            if (s.Docked == null && hovering && downAt - hoveredSince > TimeSpan.FromMilliseconds(500) && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && EventAt(down.OriginalSource) is { Link: string link })
+            if (s.Docked == null && hovering && downAt - hoveredSince > TimeSpan.FromMilliseconds(500) && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && LinkAt(down.OriginalSource) is string link)
             {
-                Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });   // a click (not a drag) on an event opens it
+                Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });   // a click (not a drag) on an event or a travel time opens it
                 return;
             }
             else if (s.Docked switch { "Left" => Left < wa.Left + 60, "Right" => Left + ActualWidth > wa.Right - 60, _ => Top < wa.Top + 60 })
@@ -181,7 +186,7 @@ public partial class MainWindow : Window
             s.IdleWidth = Math.Clamp(p.X / s.Scale, 160, 900);
             if (s.IdleWidth > s.Width) s.Width = s.IdleWidth.Value;   // stretching past the edge widens the expanded view too
             ApplySize();
-            var bottom = NextPanel.TranslatePoint(new Point(0, NextPanel.ActualHeight), IdleLayer).Y;
+            var bottom = IdleBottom();
             var row = 24 * s.Scale;   // about one Up next row
             if (p.Y > bottom + row * 0.7 && s.NextCount < 7) { s.NextCount++; Render(); }
             else if (p.Y < bottom - row * 0.7 && s.NextCount > 1) { s.NextCount--; Render(); }
@@ -239,7 +244,67 @@ public partial class MainWindow : Window
             error = "Offline, showing last known. " + e.Message;
             lastFetch = DateTime.Now.AddSeconds(Math.Min(0, 60 - s.RefreshSeconds));   // retry in about a minute
         }
-        finally { busy = false; Render(); }
+        finally { busy = false; Render(); _ = LoadTrips(); }
+    }
+
+    /// The trip for a travel event, if both ends are known (see docs/travel.md).
+    Trip? TripOf(Ev t)
+    {
+        if (!s.Travel || !Travel.Is(t) || Travel.Destination(t, events, places) is not string to || Travel.Origin(t, events, places) is not string from) return null;
+        return trips.GetValueOrDefault($"{from}|{to}|{t.End:O}") ?? new(new(), Travel.GoogleMaps(from, to), DateTime.MinValue, false, from, to, t.End);
+    }
+
+    /// Look up times for travel events in the next 12 hours: every 5 min when they're within 2 hours, else hourly.
+    async Task LoadTrips()
+    {
+        if (tripsBusy || !s.Travel) return;
+        tripsBusy = true;
+        try
+        {
+            var now = DateTime.Now;
+            places = Travel.Places(events, s.Places);
+            foreach (var t in events.Where(e => Travel.Is(e) && e.End > now && e.Start < now.AddHours(12)).ToList())
+            {
+                if (TripOf(t) is not { } trip) continue;
+                var ttl = TimeSpan.FromMinutes(trip.Failed || t.Start - now < TimeSpan.FromHours(2) ? 5 : 60);
+                if (now - trip.Fetched < ttl) continue;
+                trips[$"{trip.From}|{trip.To}|{trip.By:O}"] = await FetchTrip(trip, now);
+            }
+        }
+        finally { tripsBusy = false; Render(); }
+    }
+
+    async Task<Trip> FetchTrip(Trip trip, DateTime now)
+    {
+        var (from, to) = (Travel.Code(trip.From), Travel.Code(trip.To));
+        if (from == null || to == null || from == to) return trip with { Fetched = now };   // TfL can't plan it: directions link only
+        try
+        {
+            var buffer = TimeSpan.FromMinutes(s.TravelBuffer);
+            var (list, a, b) = await Travel.Fetch(from, to, trip.By, arriving: true);
+            list = list.Where(j => j.Depart - buffer >= now).ToList();
+            if (list.Count < 3)   // running late, or TfL gave few: the next ones from now
+            {
+                var (more, a2, b2) = await Travel.Fetch(from, to, now + buffer, arriving: false);
+                (list, a, b) = (Travel.Merge(list, more), a ?? a2, b ?? b2);
+            }
+            var link = list.Count > 0 && b != null ? Travel.Citymapper(a, b, trip.To, trip.By) : Travel.GoogleMaps(trip.From, trip.To);
+            return trip with { Options = list, Link = link, Fetched = now, Failed = false };
+        }
+        catch { return trip with { Fetched = now, Failed = true }; }   // offline: keep what we had, try again in 5 min
+    }
+
+    /// The "Later" chip: three more leaving after the last one shown.
+    async Task Later(Trip trip)
+    {
+        var (from, to) = (Travel.Code(trip.From)!, Travel.Code(trip.To)!);
+        try
+        {
+            var (more, _, _) = await Travel.Fetch(from, to, trip.Options[^1].Depart.AddMinutes(1), arriving: false);
+            trips[$"{trip.From}|{trip.To}|{trip.By:O}"] = trip with { Options = Travel.Merge(trip.Options, more) };
+        }
+        catch { }
+        Render();
     }
 
     async Task SignIn()
@@ -324,8 +389,11 @@ public partial class MainWindow : Window
         var upcoming = timed.Where(e => e.Start > now).ToList();
 
         foreach (var e in current)
+        {
             NowPanel.Children.Add(Card(e, $"until {Time(e.End)}  ·  {Dur(e.End - now)} left", (now - e.Start) / (e.End - e.Start),
                 headsUp && e.End == change));
+            if (Times(e, now) is { } times) NowPanel.Children.Add(times);
+        }
         if (current.Count == 0 && (demo || g.SignedIn))
             NowPanel.Children.Add(Text(upcoming.Count > 0 && upcoming[0].Start.Date == now.Date ? $"Free until {Time(upcoming[0].Start)}" : "Free", 15, 0.8));
 
@@ -337,7 +405,11 @@ public partial class MainWindow : Window
             var label = Text($"NEXT  ·  {In(next[0].Start - now, next[0].Start)}", 11, 0.55);
             if (headsUp && next[0].Start == change) { label.Foreground = new SolidColorBrush(Amber); label.Opacity = 1; label.FontWeight = FontWeights.SemiBold; }
             NextPanel.Children.Add(label);
-            foreach (var e in next) NextPanel.Children.Add(Row(e, 14));
+            foreach (var e in next)
+            {
+                NextPanel.Children.Add(Row(e, 14));
+                if (Times(e, now) is { } times) NextPanel.Children.Add(times);
+            }
         }
 
         // Expanded view: everything after "next", grouped by day, with each future day's all-day items first.
@@ -356,6 +428,7 @@ public partial class MainWindow : Window
                 Agenda.Children.Add(Text(day == now.Date.AddDays(1) ? "TOMORROW" : day.ToString("dddd d MMM").ToUpper(), 11, 0.55, new(0, 10, 0, 2)));
             }
             Agenda.Children.Add(Row(e, 13));
+            if (Times(e, now) is { } times) Agenda.Children.Add(times);
         }
         if (Agenda.Children.Count == 0) Agenda.Children.Add(Text(s.DaysAhead == 0 ? "Nothing else today" : "Nothing else coming up", 12, 0.5));
 
@@ -429,6 +502,13 @@ public partial class MainWindow : Window
         if (!e.AllDay)   // how long it lasts, for planning around it
         {
             var len = new TextBlock { Text = Dur(e.End - e.Start), Opacity = 0.5, FontSize = size - 2, Margin = new(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            if (LeaveAt(e, DateTime.Now) is DateTime leave)   // a travel event: when to leave matters more than how long
+            {
+                len.Text = null;
+                len.Inlines.Add(new System.Windows.Documents.Run("\uE7C0  ") { FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets") });   // Train
+                len.Inlines.Add(new System.Windows.Documents.Run($"leave {Time(leave)}"));
+                if (leave - DateTime.Now <= TimeSpan.FromMinutes(s.HeadsUpMinutes)) { len.Foreground = new SolidColorBrush(Amber); len.Opacity = 1; }
+            }
             DockPanel.SetDock(len, Dock.Right);
             dp.Children.Add(len);
         }
@@ -444,12 +524,61 @@ public partial class MainWindow : Window
         return el;
     }
 
-    static Ev? EventAt(object? source)
+    /// The link under a click: an event's (see Clickable) or a travel time's (see TimeChip).
+    static string? LinkAt(object? source)
     {
         for (var d = source as DependencyObject; d != null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
-            if (d is FrameworkElement { Tag: Ev e }) return e;
+            switch (d)
+            {
+                case FrameworkElement { Tag: Ev e }: return e.Link;
+                case FrameworkElement { Tag: string url }: return url;
+            }
         return null;
     }
+
+    // ---------- travel ----------
+
+    List<Journey> Upcoming(Trip trip, DateTime now) => trip.Options.Where(j => j.Depart.AddMinutes(-s.TravelBuffer) >= now.AddMinutes(-1)).ToList();
+
+    /// When to leave: for the one to catch, else (running late) the next one. Null without times.
+    DateTime? LeaveAt(Ev e, DateTime now) =>
+        TripOf(e) is { } trip && Upcoming(trip, now) is { Count: > 0 } opts ? (Travel.Catch(opts, trip.By) ?? opts[0]).Depart.AddMinutes(-s.TravelBuffer) : null;
+
+    /// Under a travel event in the expanded view: leave → arrive for each option, the one to catch outlined, late ones dimmed.
+    UIElement? Times(Ev e, DateTime now)
+    {
+        if (!expanded || TripOf(e) is not { } trip || trip.Fetched == DateTime.MinValue) return null;   // only trips it has looked up
+        var wrap = new WrapPanel { Margin = new(16, 1, 0, 4) };
+        var opts = Upcoming(trip, now);
+        var best = Travel.Catch(opts, trip.By);
+        var app = trip.Link.Contains("citymapper") ? "Citymapper" : "Google Maps";
+        foreach (var j in opts)
+        {
+            var leave = j.Depart.AddMinutes(-s.TravelBuffer);
+            var c = TimeChip($"{Time(leave)} → {Time(j.Arrive)}", trip.Link);
+            c.ToolTip = $"Leave {Time(leave)}{(s.TravelBuffer > 0 ? $" ({s.TravelBuffer} min to get ready, out the door {Time(j.Depart)})" : "")}\n" +
+                        $"{j.Via}  ·  {Dur(j.Arrive - j.Depart)}\nArrive {Time(j.Arrive)}{(j.Arrive > trip.By ? $", {Dur(j.Arrive - trip.By)} late" : "")}\nClick to open in {app}";
+            if (j == best) c.BorderBrush = new SolidColorBrush(Green);
+            if (j.Arrive > trip.By) c.Opacity = 0.5;
+            wrap.Children.Add(c);
+        }
+        if (opts.Count > 0)
+        {
+            var later = TimeChip("Later", null);
+            later.Opacity = 0.7;
+            later.MouseLeftButtonDown += async (_, a) => { a.Handled = true; await Later(trip); };
+            wrap.Children.Add(later);
+        }
+        else wrap.Children.Add(TimeChip("Directions", trip.Link));
+        return wrap;
+    }
+
+    Border TimeChip(string text, string? link) => new()
+    {
+        Background = card, CornerRadius = new(9), Padding = new(8, 1, 8, 2), Margin = new(0, 0, 5, 4), Tag = link,
+        BorderBrush = Brushes.Transparent, BorderThickness = new(1), Cursor = System.Windows.Input.Cursors.Hand,
+        Child = new TextBlock { Text = text, FontSize = 11.5 },
+    };
 
     static string Dur(TimeSpan t) =>
         t.TotalMinutes < 60 ? $"{Math.Max(1, (int)Math.Ceiling(t.TotalMinutes))}m"
@@ -506,9 +635,11 @@ public partial class MainWindow : Window
             var sp = top ? new StackPanel { Width = TopItemWidth, Margin = new(0, 0, last ? 0 : 14, 0) } : new StackPanel { Margin = new(0, 0, 0, last ? 0 : 8) };
             sp.Children.Add(new TextBlock { Text = e.Title, FontSize = on ? 13 : 12, FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis });
             var until = e.Start - now;
-            sp.Children.Add(Text(on ? $"{Dur(e.End - now)} left" : $"{(until.TotalHours < 12 ? $"in {Dur(until)}" : $"{e.Start:ddd} {Time(e.Start)}")}  ·  {Dur(e.End - e.Start)}", 11, 0.65, new(0)));
+            var sub = on ? $"{Dur(e.End - now)} left" : $"{(until.TotalHours < 12 ? $"in {Dur(until)}" : $"{e.Start:ddd} {Time(e.Start)}")}  ·  {Dur(e.End - e.Start)}";
+            if (LeaveAt(e, now) is DateTime leave) sub = $"leave {Time(leave)}  ·  {sub}";
+            sp.Children.Add(Text(sub, 11, 0.65, new(0)));
             if (on) sp.Children.Add(Bar(e, (now - e.Start) / (e.End - e.Start), headsUp && e.End == change));
-            else if (coming is { Starts: true } h && h.Event == e) { var sub = (TextBlock)sp.Children[1]; sub.Foreground = new SolidColorBrush(Amber); sub.Opacity = 1; }
+            else if (coming is { Starts: true } h && h.Event == e) { var line = (TextBlock)sp.Children[1]; line.Foreground = new SolidColorBrush(Amber); line.Opacity = 1; }
             Strip.Children.Add(sp);
         }
     }
@@ -594,10 +725,17 @@ public partial class MainWindow : Window
     void PlaceIdleFrame()
     {
         if (IdleLayer.Visibility != Visibility.Visible || !IsLoaded) return;
-        var bottom = NextPanel.TranslatePoint(new Point(0, NextPanel.ActualHeight), IdleLayer).Y + 8 * s.Scale;
+        var bottom = IdleBottom() + 8 * s.Scale;
         var w = IdleWidth() * s.Scale;
         IdleOutline.Width = w; IdleOutline.Height = bottom;
         Canvas.SetLeft(IdleGrip, w - IdleGrip.Width); Canvas.SetTop(IdleGrip, bottom - IdleGrip.Height);
+    }
+
+    /// The bottom of the last Up next row, in IdleLayer coordinates. Travel times under it only show expanded, so they don't count.
+    double IdleBottom()
+    {
+        var last = NextPanel.Children.OfType<FrameworkElement>().LastOrDefault(c => c is not WrapPanel) ?? NextPanel;
+        return last.TranslatePoint(new Point(0, last.ActualHeight), IdleLayer).Y;
     }
 
     void Expand()
@@ -605,6 +743,7 @@ public partial class MainWindow : Window
         if (!hovering) hoveredSince = DateTime.Now;
         hovering = true;
         ApplyView();
+        Render();   // travel times show only now
         Pin.Opacity = 0.7;
         Grip.Opacity = 0.5;
         FadeTo(1);
@@ -624,7 +763,8 @@ public partial class MainWindow : Window
     {
         hovering = false;
         ApplyView();
-        if (banners.RemoveAll(a => a.Kind == AlertKind.Starting) > 0) Render();   // you've hovered, so you've seen it
+        banners.RemoveAll(a => a.Kind == AlertKind.Starting);   // you've hovered, so you've seen it
+        Render();
         Scroll.ScrollToTop();
         Pin.Opacity = 0;
         Grip.Opacity = 0;

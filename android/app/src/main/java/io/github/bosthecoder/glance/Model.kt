@@ -12,6 +12,7 @@ data class Ev(
     val color: Int,
     val reminders: List<Int> = emptyList(),   // minutes before begin
     val eventId: Long = 0,     // Events._ID, to open it in the calendar app
+    val location: String? = null,
 )
 
 sealed class Alert {

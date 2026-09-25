@@ -42,6 +42,11 @@ public class Settings
     public int DaysAhead { get; set; } = 7;         // 0 = today only
     public bool Clock24 { get; set; } = true;
 
+    // Travel events: public transport times from TfL (docs/travel.md)
+    public bool Travel { get; set; } = true;
+    public int TravelBuffer { get; set; } = 5;          // minutes to get ready, taken off each departure
+    public Dictionary<string, string>? Places { get; set; }   // extra named places, e.g. {"Gym": "…, London E16 1AA"}
+
     // Alerts
     public int HeadsUpMinutes { get; set; } = 5;       // amber countdown before things change; 0 = off
     public bool Reminders { get; set; } = true;        // show the events' own Google reminders
