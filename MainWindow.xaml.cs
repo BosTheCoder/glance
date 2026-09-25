@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     bool busy, hotkeyOk = true;
     bool expanded;   // agenda showing: while hovered, or always in Full view
     bool hovering;   // mouse is over the widget: full brightness
+    DateTime hoveredSince;   // when it expanded under the mouse; clicks on events count only once it has settled
     double? shiftedFrom;   // original Top when expanding had to move the window up to stay on screen
     double widthShift;     // how far expanding moved it left, when it's narrower idle and sits on the right of the screen
     IntPtr hwnd;
@@ -129,7 +130,7 @@ public partial class MainWindow : Window
         MouseLeftButtonDown += (_, down) =>
         {
             slide.Stop();
-            var (x0, y0) = (Left, Top);
+            var (x0, y0, downAt) = (Left, Top, DateTime.Now);
             dragTrail.Clear();
             dragging = true;
             DragMove();
@@ -143,7 +144,8 @@ public partial class MainWindow : Window
                 if (side != null) { DockTo(side); return; }
             }
             else if (Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4) { Undock(); return; }   // a click brings it back
-            if (s.Docked == null && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && EventAt(down.OriginalSource) is { Link: string link })
+            // Only in the settled, focused view: a click that lands as the widget is still expanding under the pointer isn't aimed.
+            if (s.Docked == null && hovering && downAt - hoveredSince > TimeSpan.FromMilliseconds(500) && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && EventAt(down.OriginalSource) is { Link: string link })
             {
                 Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });   // a click (not a drag) on an event opens it
                 return;
@@ -600,6 +602,7 @@ public partial class MainWindow : Window
 
     void Expand()
     {
+        if (!hovering) hoveredSince = DateTime.Now;
         hovering = true;
         ApplyView();
         Pin.Opacity = 0.7;

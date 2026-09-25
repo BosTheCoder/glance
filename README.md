@@ -55,7 +55,7 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 | Do this | To |
 | --- | --- |
 | Hover | Expand the agenda and make the widget solid. Right-click → **View → Full** keeps it expanded all the time |
-| Click an event | Open it in Google Calendar (on Android, in the Calendar app) |
+| Click an event in the expanded view | Open it in Google Calendar. Clicks only count once it has finished expanding, so a click as you arrive can't open one by accident. On Android, tap an event in the open card |
 | Drag anywhere | Move it |
 | Throw it sideways or up, or push it mostly off an edge | Dock it to that edge as a strip (the top is Windows only). Click the strip to bring it back, or drag it along the edge |
 | Drag the bottom-right corner | Resize the width, and the list height while expanded |

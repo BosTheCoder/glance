@@ -27,7 +27,7 @@ In the default Compact view:
 | Tap the clock, or anywhere outside | Collapse it again |
 | Drag the grip in the card's bottom corner (the one away from the screen edge) | Resize the card: inwards makes it wider, down gives the agenda more height. It remembers the size |
 | Pinch the pill | Resize it: spread your fingers sideways to set the pill's width (every line fills it, and long titles are cut short inside it), up and down to show more or fewer Up next rows (1 to 7). It remembers both; **Reset size** puts it back to fitting its text |
-| Tap an event (an Up next row in the pill, or the current event or an agenda row in the card) | Open that event in your calendar app. Tapping the pill anywhere else still expands it |
+| Tap an event in the card (the current event or an agenda row) | Open that event in your calendar app. Only the open card does this, so a tap on the pill can't open one by accident: tapping the pill expands it |
 | Drag the pill | Move it. It snaps to the nearest left or right edge and remembers where it was |
 | Throw it towards an edge, or drag it mostly off one | Dock it there as the side strip (below) |
 | Leave it for 3 seconds | It fades to the idle opacity. It never moves on its own |
@@ -144,4 +144,4 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 - **Android 14+** requires a declared type for every foreground service. None of the specific types fit a floating widget, so Glance uses `specialUse` with a short explanation in the manifest. Starting it from `BOOT_COMPLETED` is still allowed on Android 15 (the new boot restriction covers data sync, camera, media, phone call and microphone services, not `specialUse`). If Android refuses to start it anyway, Glance logs it and stops quietly instead of crashing.
 - **Reminder vibration** uses the notification vibration usage, which Android requires for vibrating from the background, so it follows your phone's notification vibration setting.
 - **Some phones kill background apps anyway** (Samsung, Xiaomi, OnePlus, Huawei and others). If the pill vanishes after a while, set Glance's battery use to "Unrestricted" or add it to the battery exceptions. [dontkillmyapp.com](https://dontkillmyapp.com) has the steps for each brand.
-- After you install an update (from the settings screen or by hand), open Glance and tap Start again.
+- After an update from the settings screen, the widget starts again by itself if it was running. After installing an APK by hand, open Glance and tap Start.

@@ -610,7 +610,6 @@ class OverlayService : Service() {
 
     private fun nextRow(e: Ev, now: Long) = LinearLayout(ui).apply {
         gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(5), 0, 0)
-        tag = e; background = ripple()   // the pill's own touch handler finds and presses it: see onTouch
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginEnd = dp(8) })
         addView(ui.text(if (day(e.begin) == day(now)) hm(e.begin) else fmt(e.begin, "EEE HH:mm"), 12f, 0x99FFFFFF.toInt()),
@@ -837,22 +836,9 @@ class OverlayService : Service() {
     private var velocity: VelocityTracker? = null
     private var lastMove = 0L
     private val flingV by lazy { dp(DOCK_FLING).toFloat() }
-    private var pressedRow: View? = null   // an Up next row under the finger: a tap on it opens that event
-    private fun unpress() { pressedRow?.isPressed = false; pressedRow = null }
-
-    /** The pill's Up next row at screen point (x, y), if any. The pill handles its own touches, so rows can't be clickable. */
-    private fun nextRowAt(x: Float, y: Float): View? {
-        if (pill.visibility != View.VISIBLE) return null
-        val at = IntArray(2)
-        for (i in 0 until nextBox.childCount) {
-            val r = nextBox.getChildAt(i); r.getLocationOnScreen(at)
-            if (x >= at[0] && x < at[0] + r.width && y >= at[1] && y < at[1] + r.height) return r
-        }
-        return null
-    }
 
     private val longR = Runnable {
-        longFired = true; unpress()
+        longFired = true
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -875,7 +861,7 @@ class OverlayService : Service() {
     private val pinch by lazy {
         ScaleGestureDetector(ui, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
-                pinched = true; dragging = false; unpress()
+                pinched = true; dragging = false
                 h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel()
                 spanX0 = d.currentSpanX; spanY0 = d.currentSpanY
                 pinchStartW = root.width; pinchStartCount = prefs.nextCount   // from the pill's actual width
@@ -912,7 +898,6 @@ class OverlayService : Service() {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 touching = true; dragging = false; longFired = false; pinched = false
-                pressedRow = nextRowAt(e.rawX, e.rawY)?.also { it.isPressed = true }
                 downX = e.rawX; downY = e.rawY
                 velocity?.recycle(); velocity = VelocityTracker.obtain(); track(e)
                 h.removeCallbacks(fadeR)
@@ -922,7 +907,7 @@ class OverlayService : Service() {
             MotionEvent.ACTION_MOVE -> {
                 track(e); lastMove = e.eventTime
                 if (!dragging && !longFired && hypot(e.rawX - downX, e.rawY - downY) > slop) {
-                    dragging = true; h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel(); unpress()
+                    dragging = true; h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel()
                     startX = lp.x; startY = lp.y; downX = e.rawX; downY = e.rawY
                 }
                 // Docked, a drag slides the strip along its edge until it's pulled inward: then it undocks and follows.
@@ -951,7 +936,6 @@ class OverlayService : Service() {
                     it.recycle()
                 }
                 velocity = null
-                val row = pressedRow; unpress()
                 when {
                     dragging && docked -> { lp.y = clampY(lp.y, root.height); update(); prefs.y = lp.y }
                     dragging -> {
@@ -961,7 +945,6 @@ class OverlayService : Service() {
                     }
                     !tap || longFired -> {}
                     docked -> { root.performClick(); undock(spring = true) }   // tap the strip: back out
-                    row != null -> { root.performClick(); openEvent(row.tag as Ev) }   // tap an Up next row
                     banner != null -> { root.performClick(); banner = null; render() }   // tap dismisses the alert
                     else -> { root.performClick(); if (!full) expand() }
                 }
