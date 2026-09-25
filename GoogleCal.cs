@@ -86,7 +86,7 @@ public class GoogleCal
                     _ = Serve(c, result);
                 }
             });
-            var q = await result.Task.WaitAsync(TimeSpan.FromMinutes(5));
+            var q = await result.Task.WaitAsync(TimeSpan.FromMinutes(15));
             if (q.TryGetValue("error", out var err)) throw new Exception(err);
             if (q.GetValueOrDefault("state") != state) throw new Exception("state mismatch");
 
