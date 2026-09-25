@@ -44,7 +44,8 @@ public class Settings
     // Alerts
     public int HeadsUpMinutes { get; set; } = 5;       // amber countdown before things change; 0 = off
     public bool Reminders { get; set; } = true;        // show the events' own Google reminders
-    public string Sound { get; set; } = "Reminders";   // Off | Reminders | All
+    public string Sound { get; set; } = "Reminders";   // Off | Reminders (heads-ups and reminders) | All (starts too)
+    public string Shake { get; set; } = "Reminders";   // a little shake to catch your eye: same choices as Sound
     public bool AlertsReveal { get; set; } = true;     // bring the widget back for an alert if it's hidden
 
     public static string Path => System.IO.Path.Combine(AppContext.BaseDirectory, "settings.json");

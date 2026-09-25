@@ -74,7 +74,7 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 | **Green ▶ Now: …** | An event just started | Once you've hovered the widget |
 | **Blue 🔔** | One of the event's own reminders (the popup reminders you set in Google Calendar) | Click it, or when the event starts |
 
-While an alert is showing, the widget stays fully visible. If it was hidden, it comes back. Heads-ups and reminders play the Windows notification sound, and you can turn that off. Everything is under right-click → **Alerts**, including **Preview alerts** so you can see them.
+While an alert is showing, the widget stays fully visible. If it was hidden, it comes back. Heads-ups and reminders play the Windows notification sound and give the widget a quick shake. You can choose which alerts do either, or turn them off. Everything is under right-click → **Alerts**, including **Preview alerts** so you can see them.
 
 <br clear="right">
 

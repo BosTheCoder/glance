@@ -29,6 +29,7 @@ Everything in the right-click menu is saved to `settings.json` next to `Glance.e
 | `HeadsUpMinutes` | `5` | Amber heads-up this many minutes before the current event ends or the next starts: a "Next: …" (or "Ending: …") banner, one pulse and a chime. `0` turns it off |
 | `Reminders` | `true` | Show events' own Google popup reminders as blue banners |
 | `Sound` | `"Reminders"` | `Off`, `Reminders` (heads-ups and reminders) or `All` (starts too). Uses the Windows notification sound |
+| `Shake` | `"Reminders"` | A quick sideways shake to catch your eye: `Off`, `Reminders` (heads-ups and reminders) or `All` (starts too) |
 | `AlertsReveal` | `true` | Bring the widget back for an alert if you've hidden it |
 | `Left`, `Top` | `null` | Position. `null` means top-right of the primary screen |
 

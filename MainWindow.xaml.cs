@@ -38,6 +38,9 @@ public partial class MainWindow : Window
     readonly List<(long Ms, double X, double Y)> dragTrail = new();
     bool dragging;
     readonly DispatcherTimer slide = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    readonly DispatcherTimer shake = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    double shakeFrom;
+    long shakeStart;
     Point slideFrom, slideTo;
     long slideStart;
     // Alerts: amber = something changes soon, green = an event just started, blue = one of the event's reminders.
@@ -101,6 +104,13 @@ public partial class MainWindow : Window
             Left = slideFrom.X + (slideTo.X - slideFrom.X) * k;
             Top = slideFrom.Y + (slideTo.Y - slideFrom.Y) * k;
             if (p >= 1) slide.Stop();
+        };
+
+        shake.Tick += (_, _) =>
+        {
+            var t = (Environment.TickCount64 - shakeStart) / 1000.0;
+            if (t >= 0.45 || dragging) { shake.Stop(); if (!dragging) Left = shakeFrom; return; }
+            Left = shakeFrom + 10 * Math.Sin(2 * Math.PI * 11 * t) * (1 - t / 0.45);   // a few quick, fading wiggles
         };
 
         MouseEnter += async (_, _) =>
@@ -263,8 +273,8 @@ public partial class MainWindow : Window
             // Once per change: pulse the whole widget (so the side strip gets it too), chime, and come back if hidden.
             headsUpFor = coming.At;
             Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
-            if (s.Sound != "Off") SystemSounds.Asterisk.Play();
             if (!IsVisible && s.AlertsReveal) Show();
+            Attention(null);
         }
         // Docked, the banners don't fit, so the strip's rim takes the alert's colour instead.
         Color? rim = s.Docked != null && banners.Count > 0 ? (banners[^1].Kind == AlertKind.Reminder ? Blue : Green) : headsUp ? Amber : null;
@@ -585,6 +595,19 @@ public partial class MainWindow : Window
 
     // ---------- alerts ----------
 
+    /// Sound and shake for an alert, per their settings. [kind] null = the heads-up.
+    /// Both settings read Off | Reminders (heads-ups and reminders) | All (event starts too).
+    void Attention(AlertKind? kind)
+    {
+        bool Wants(string setting) => setting == "All" || setting == "Reminders" && kind != AlertKind.Starting;
+        if (Wants(s.Sound)) SystemSounds.Asterisk.Play();
+        if (Wants(s.Shake) && IsVisible && !dragging && !slide.IsEnabled && !shake.IsEnabled)
+        {
+            shakeFrom = Left; shakeStart = Environment.TickCount64;
+            shake.Start();
+        }
+    }
+
     void CheckAlerts(DateTime now)
     {
         // A "starting" banner stays until you've hovered the widget (seen it), at most 10 min; a reminder until clicked or its event starts.
@@ -598,7 +621,7 @@ public partial class MainWindow : Window
 
         banners.AddRange(fresh.Select(a => a with { At = now }));   // At = when shown, for expiry
         if (!IsVisible && s.AlertsReveal) Show();
-        if (s.Sound == "All" || s.Sound == "Reminders" && fresh.Any(a => a.Kind == AlertKind.Reminder)) SystemSounds.Asterisk.Play();
+        Attention(fresh.Any(a => a.Kind == AlertKind.Reminder) ? AlertKind.Reminder : AlertKind.Starting);
     }
 
     void RenderBanners(DateTime now)
@@ -658,7 +681,7 @@ public partial class MainWindow : Window
                 ?? new Ev("Example event", now.AddMinutes(10), now.AddMinutes(40), false, "#7986CB");
         banners.Add(new(AlertKind.Starting, e, now));
         banners.Add(new(AlertKind.Reminder, e, now));
-        if (s.Sound != "Off") SystemSounds.Asterisk.Play();
+        Attention(AlertKind.Reminder);
         Render();
     }
 }

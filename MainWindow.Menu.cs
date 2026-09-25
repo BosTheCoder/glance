@@ -79,6 +79,7 @@ public partial class MainWindow
         alerts.Items.Add(Choice("Heads-up before changes", new[] { ("Off", 0), ("2 minutes", 2), ("5 minutes", 5), ("10 minutes", 10) }, s.HeadsUpMinutes, v => s.HeadsUpMinutes = v));
         alerts.Items.Add(Toggle("Event reminders", s.Reminders, v => s.Reminders = v));
         alerts.Items.Add(Choice("Sound", new[] { ("Off", "Off"), ("Heads-up and reminders", "Reminders"), ("All alerts", "All") }, s.Sound, v => s.Sound = v));
+        alerts.Items.Add(Choice("Shake", new[] { ("Off", "Off"), ("Heads-up and reminders", "Reminders"), ("All alerts", "All") }, s.Shake, v => s.Shake = v));
         alerts.Items.Add(Toggle("Show the widget for alerts when hidden", s.AlertsReveal, v => s.AlertsReveal = v));
         alerts.Items.Add(new Separator());
         alerts.Items.Add(Action("Preview alerts", PreviewAlerts));
