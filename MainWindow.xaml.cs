@@ -19,7 +19,9 @@ public partial class MainWindow : Window
     List<Ev> events = new();
     DateTime lastFetch = DateTime.MinValue;
     string? error;
-    bool busy, expanded, hotkeyOk = true;
+    bool busy, hotkeyOk = true;
+    bool expanded;   // agenda showing: while hovered, or always in Full view
+    bool hovering;   // mouse is over the widget: full brightness
     double? shiftedFrom;   // original Top when expanding had to move the window up to stay on screen
     IntPtr hwnd;
     double alpha = 1, alphaTarget = 1;
@@ -174,7 +176,8 @@ public partial class MainWindow : Window
             Native.ToolWindow(hwnd, !s.ShowInTaskbar);
             hotkeyOk = Native.Hotkey(hwnd, s.Hotkey);
         }
-        if (!expanded) FadeTo(IdleOpacity());
+        ApplyView();
+        if (!hovering) FadeTo(IdleOpacity());
         ApplySize();
         Render();
     }
@@ -202,7 +205,7 @@ public partial class MainWindow : Window
         headsUp = s.HeadsUpMinutes > 0 && change is DateTime c && c - now <= TimeSpan.FromMinutes(s.HeadsUpMinutes);
         Root.BorderBrush = headsUp ? new SolidColorBrush(Color.FromArgb(0x99, Amber.R, Amber.G, Amber.B)) : Brushes.Transparent;
         RenderBanners(now);
-        if (!expanded && IsVisible) FadeTo(IdleOpacity());
+        if (!hovering && IsVisible) FadeTo(IdleOpacity());
 
         var allDayToday = events.Where(e => e.AllDay && e.Start <= now && e.End > now).ToList();
         if (s.AllDay != "List")
@@ -319,11 +322,18 @@ public partial class MainWindow : Window
 
     // ---------- hover ----------
 
+    /// Full view keeps the agenda open all the time; Compact only opens it while hovered.
+    void ApplyView()
+    {
+        expanded = hovering || s.View == "Full";
+        Scroll.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        ShowAllDay();
+    }
+
     void Expand()
     {
-        expanded = true;
-        Scroll.Visibility = Visibility.Visible;
-        ShowAllDay();
+        hovering = true;
+        ApplyView();
         Pin.Opacity = 0.7;
         Grip.Opacity = 0.5;
         FadeTo(1);
@@ -337,14 +347,13 @@ public partial class MainWindow : Window
 
     void Collapse()
     {
-        expanded = false;
-        Scroll.Visibility = Visibility.Collapsed;
+        hovering = false;
+        ApplyView();
         if (banners.RemoveAll(a => a.Kind == AlertKind.Starting) > 0) Render();   // you've hovered, so you've seen it
-        ShowAllDay();
         Scroll.ScrollToTop();
         Pin.Opacity = 0;
         Grip.Opacity = 0;
-        if (shiftedFrom is double t) { Top = t; shiftedFrom = null; }
+        if (!expanded && shiftedFrom is double t) { Top = t; shiftedFrom = null; }
         FadeTo(IdleOpacity());
     }
 

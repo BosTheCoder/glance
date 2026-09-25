@@ -50,7 +50,7 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 
 | Do this | To |
 | --- | --- |
-| Hover | Expand the agenda and make the widget solid |
+| Hover | Expand the agenda and make the widget solid. Right-click → **View → Full** keeps it expanded all the time |
 | Drag anywhere | Move it |
 | Drag the bottom-right corner | Resize the width, and the list height while expanded |
 | Click the pin | Keep it on top of other windows |

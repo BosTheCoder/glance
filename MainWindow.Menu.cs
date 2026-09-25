@@ -21,6 +21,7 @@ public partial class MainWindow
         m.Items.Clear();
 
         m.Items.Add(Action(string.IsNullOrEmpty(s.Hotkey) ? "Hide" : $"Hide\t{s.Hotkey}", ToggleVisible));
+        m.Items.Add(Choice("View", new[] { ("Compact: expand on hover", "Compact"), ("Full: always expanded", "Full") }, s.View, v => s.View = v));
         m.Items.Add(Toggle("Pin on top", s.Pinned, v => s.Pinned = v));
         m.Items.Add(Toggle("Show in taskbar", s.ShowInTaskbar, v => s.ShowInTaskbar = v));
         var keys = new[] { "Win+Shift+G", "Win+Ctrl+G", "Ctrl+Alt+Shift+G", "Ctrl+Alt+K" }.Select(k => (k, k)).ToList();
@@ -60,7 +61,7 @@ public partial class MainWindow
         m.Items.Add(new Separator());
 
         m.Items.Add(Choice("All-day events", new[] { ("Chips, always visible", "Always"), ("Chips, on hover", "Hover"), ("In the list", "List") }, s.AllDay, v => s.AllDay = v));
-        m.Items.Add(Choice("Up next", new[] { 1, 2, 3 }.Select(n => ($"{n}", n)), s.NextCount, v => s.NextCount = v));
+        m.Items.Add(Choice("Up next", Enumerable.Range(1, 7).Select(n => ($"{n}", n)), s.NextCount, v => s.NextCount = v));
         m.Items.Add(Choice("Events when expanded", new[] { ("5", 5), ("10", 10), ("20", 20), ("All", 0) }, s.MaxEvents, v => s.MaxEvents = v));
         m.Items.Add(Choice("Look ahead", new[] { ("Today", 0), ("3 days", 3), ("1 week", 7), ("2 weeks", 14) }, s.DaysAhead, v =>
         {
