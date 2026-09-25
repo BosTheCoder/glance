@@ -489,7 +489,8 @@ class OverlayService : Service() {
         if (rows.isEmpty()) dock.addView(ui.text(if (Cal.granted(this)) "Free" else "No calendar access", 12.5f, 0xCCFFFFFF.toInt(), bold = true))
         rows.forEachIndexed { i, e ->
             val on = e.begin <= now
-            var sub = if (on) "${dur(e.end - now)} left" else whenText(e.begin, now)
+            val starts = if (e.begin - now < 12 * 60 * MIN) "in ${dur(e.begin - now)}" else fmt(e.begin, "EEE HH:mm")
+            var sub = if (on) "${dur(e.end - now)} left" else "$starts · ${dur(e.end - e.begin)}"
             var subColor = if (heads && i == 0) AMBER else 0xB3FFFFFF.toInt()
             if (b?.ev == e) when (b) {   // the alert's own row says so, in the alert colour
                 is Alert.Starting -> { sub = "▶ Now"; subColor = GREEN }
@@ -511,7 +512,13 @@ class OverlayService : Service() {
             LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginEnd = dp(8) })
         addView(ui.text(if (day(e.begin) == day(now)) hm(e.begin) else fmt(e.begin, "EEE HH:mm"), 12f, 0x99FFFFFF.toInt()),
             LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(8) })
-        addView(ui.text(e.title, 12.5f, Color.WHITE).apply { maxWidth = title.maxWidth })
+        addView(ui.text(e.title, 12.5f, Color.WHITE).apply { maxWidth = title.maxWidth }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        addView(length(e))
+    }
+
+    /** Muted "30m" / "1h 15m" at the end of an upcoming row. The title before it takes weight 1, so it ellipsizes first. */
+    private fun length(e: Ev) = ui.text(dur(e.end - e.begin), 12f, 0x80FFFFFF.toInt()).apply {
+        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) }
     }
 
     private fun label(s: String, top: Int = 0) = ui.text(s, 11f, 0x8CFFFFFF.toInt()).apply {
@@ -523,7 +530,8 @@ class OverlayService : Service() {
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(8) })
         addView(ui.text(if (e.allDay) "all day" else hm(e.begin), 12f, 0x99FFFFFF.toInt()), LinearLayout.LayoutParams(dp(48), WRAP_CONTENT))
-        addView(ui.text(e.title, 13f, Color.WHITE))
+        addView(ui.text(e.title, 13f, Color.WHITE), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        if (!e.allDay) addView(length(e))
     }
 
     private fun nowCard(e: Ev, now: Long) = LinearLayout(ui).apply {

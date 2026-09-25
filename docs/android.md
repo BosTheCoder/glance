@@ -37,7 +37,7 @@ Settings (same names as the Windows app):
 | Setting | Options |
 | --- | --- |
 | **View** | **Compact** (default): the pill above, which expands on tap. **Full**: the expanded card, all the time |
-| **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now. The expanded card lists the same number under NEXT |
+| **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now. The expanded card lists the same number under NEXT. Every upcoming timed event, here and in the agenda, shows how long it lasts ("30m", "1h 15m") at the end of its row |
 | **Items at the side** | 1 to 5 (default 2): rows in the side strip |
 | **Opacity at the side** | 25/50/75/100% (default 75%): the strip's opacity while you're not touching it |
 | Idle opacity | 25/50/75/100%: the pill's or card's opacity after 3 seconds untouched |
@@ -56,7 +56,7 @@ When you want it out of the way, throw it towards the left or right edge (a quic
 The strip shows **Items at the side** rows:
 
 - If something is on now, the first row is its title (bold, cut short if it's long), the time left ("23m left") and a thin bar in the event's colour.
-- The other rows are the next timed events: title plus "in 12m", or the start time if it's later. All-day events don't appear.
+- The other rows are the next timed events: title, then when it starts and how long it lasts ("in 4m · 30m", or "Fri 09:00 · 30m" if it's more than 12 hours away). All-day events don't appear.
 
 It sits at **Opacity at the side** while you're not touching it. An alert brings it to full opacity and colours its outline (amber, green or blue) without undocking it; the row the alert is about says "▶ Now" or "🔔 in 10m". Drag the strip up or down to move it along the edge, pull it inwards to undock it and carry on dragging, or tap it to bring back the pill (or card in Full view). The strip's text sits clear of the back-gesture zone, so touches on it reach Glance rather than the system.
 

@@ -9,7 +9,7 @@ Everything in the right-click menu is saved to `settings.json` next to `Glance.e
 | `Text` | `null` | Custom text colour, overriding the theme's |
 | `Glass` | `"Clear"` | How much tint sits on the acrylic: `Clear`, `Frosted` or `Solid` |
 | `IdleOpacity` | `0.5` | Whole-window opacity when you're not hovering (`0.1`–`1`) |
-| `Docked` | `null` | `"Left"` or `"Right"` while it's shrunk to a strip on that screen edge. Throw it sideways, or push it mostly off an edge, to dock. Click the strip to bring it back |
+| `Docked` | `null` | `"Left"`, `"Right"` or `"Top"` while it's shrunk to a strip on that screen edge. Throw it sideways or upwards, or push it mostly off an edge, to dock. At the top, the events sit side by side. Click the strip to bring it back |
 | `DockCount` | `2` | Events shown in the side strip (1–5): what's on now with time left and a bar, then what's next |
 | `DockOpacity` | `0.75` | Strip opacity when you're not hovering it |
 | `Width` | `300` | Widget width. Also set by dragging the corner |

@@ -31,10 +31,11 @@ public partial class MainWindow : Window
     readonly DispatcherTimer fade = new() { Interval = TimeSpan.FromMilliseconds(16) };
     // Docking: throw it (or push it mostly off) a screen edge and it glides there as a narrow strip.
     const double StripWidth = 170;
-    readonly List<(long Ms, double X)> dragTrail = new();
+    const double TopItemWidth = 150;   // docked at the top, events sit side by side
+    readonly List<(long Ms, double X, double Y)> dragTrail = new();
     bool dragging;
     readonly DispatcherTimer slide = new() { Interval = TimeSpan.FromMilliseconds(16) };
-    double slideFrom, slideTo;
+    Point slideFrom, slideTo;
     long slideStart;
     // Alerts: amber = something changes soon, green = an event just started, blue = one of the event's reminders.
     static readonly Color Amber = Color.FromRgb(0xF5, 0xA6, 0x23), Green = Color.FromRgb(0x3D, 0xDC, 0x97), Blue = Color.FromRgb(0x7A, 0xA2, 0xFF);
@@ -83,7 +84,9 @@ public partial class MainWindow : Window
         slide.Tick += (_, _) =>
         {
             var p = Math.Min(1, (Environment.TickCount64 - slideStart) / 320.0);
-            Left = slideFrom + (slideTo - slideFrom) * (1 - Math.Pow(1 - p, 3));   // ease out: quick start, gentle landing
+            var k = 1 - Math.Pow(1 - p, 3);   // ease out: quick start, gentle landing
+            Left = slideFrom.X + (slideTo.X - slideFrom.X) * k;
+            Top = slideFrom.Y + (slideTo.Y - slideFrom.Y) * k;
             if (p >= 1) slide.Stop();
         };
 
@@ -97,7 +100,7 @@ public partial class MainWindow : Window
         MouseLeave += (_, _) => { if (!ContextMenu.IsOpen && !Grip.IsDragging) collapseDelay.Start(); };
         ContextMenu.Closed += (_, _) => { if (!IsMouseOver) collapseDelay.Start(); };
         ContextMenuOpening += (_, _) => BuildMenu();
-        LocationChanged += (_, _) => { if (dragging) dragTrail.Add((Environment.TickCount64, Left)); };
+        LocationChanged += (_, _) => { if (dragging) dragTrail.Add((Environment.TickCount64, Left, Top)); };
         MouseLeftButtonDown += (_, _) =>
         {
             slide.Stop();
@@ -110,11 +113,13 @@ public partial class MainWindow : Window
             var wa = Native.WorkArea(this, hwnd);
             if (s.Docked == null)
             {
-                var side = Docking.Side(Left, ActualWidth, wa.Left, wa.Right, Docking.Velocity(dragTrail, Environment.TickCount64));
+                var (vx, vy) = Docking.Velocity(dragTrail, Environment.TickCount64);
+                var side = Docking.Side(Left, Top, ActualWidth, ActualHeight, wa.Left, wa.Top, wa.Right, vx, vy);
                 if (side != null) { DockTo(side); return; }
             }
             else if (Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4) { Undock(); return; }   // a click brings it back
-            else if (s.Docked == "Left" ? Left < wa.Left + 60 : Left + ActualWidth > wa.Right - 60) { DockTo(s.Docked); return; }   // slid along the edge
+            else if (s.Docked switch { "Left" => Left < wa.Left + 60, "Right" => Left + ActualWidth > wa.Right - 60, _ => Top < wa.Top + 60 })
+            { DockTo(s.Docked); return; }   // slid along the edge
             else { s.Docked = null; ApplyDock(); }   // pulled away from the edge: back to normal where it was dropped
             s.Left = Left; s.Top = Top; s.Save();
         };
@@ -216,7 +221,7 @@ public partial class MainWindow : Window
 
     void ApplySize()
     {
-        Root.Width = s.Docked != null ? StripWidth : s.Width;
+        Root.Width = s.Docked switch { null => s.Width, "Top" => double.NaN, _ => StripWidth };
         Zoom.ScaleX = Zoom.ScaleY = s.Scale;
         Scroll.MaxHeight = s.ListHeight;
     }
@@ -352,6 +357,12 @@ public partial class MainWindow : Window
         };
         DockPanel.SetDock(dot, Dock.Left); DockPanel.SetDock(time, Dock.Left);
         dp.Children.Add(dot); dp.Children.Add(time);
+        if (!e.AllDay)   // how long it lasts, for planning around it
+        {
+            var len = new TextBlock { Text = Dur(e.End - e.Start), Opacity = 0.5, FontSize = size - 2, Margin = new(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(len, Dock.Right);
+            dp.Children.Add(len);
+        }
         dp.Children.Add(new TextBlock { Text = e.Title, FontSize = size, TextTrimming = TextTrimming.CharacterEllipsis });
         return dp;
     }
@@ -368,11 +379,14 @@ public partial class MainWindow : Window
     void RenderStrip(DateTime now, List<Ev> current, List<Ev> upcoming, DateTime? change)
     {
         Strip.Children.Clear();
+        var top = s.Docked == "Top";
+        Strip.Orientation = top ? Orientation.Horizontal : Orientation.Vertical;
         foreach (var a in banners.Where(b => b.Kind == AlertKind.Reminder).TakeLast(1))
         {
             var line = new TextBlock { FontSize = 11.5, Foreground = new SolidColorBrush(Blue), Margin = new(0, 0, 0, 6), TextTrimming = TextTrimming.CharacterEllipsis };
             line.Inlines.Add(new System.Windows.Documents.Run("\uEA8F  ") { FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets") });
             line.Inlines.Add(new System.Windows.Documents.Run(a.Event.Title));
+            if (top) { line.Width = TopItemWidth; line.Margin = new(0, 0, 14, 0); }
             Strip.Children.Add(line);
         }
         var items = current.Concat(upcoming).Take(Math.Clamp(s.DockCount, 1, 5)).ToList();
@@ -380,10 +394,11 @@ public partial class MainWindow : Window
         foreach (var e in items)
         {
             var on = e.Start <= now;
-            var sp = new StackPanel { Margin = new(0, 0, 0, e == items[^1] ? 0 : 8) };
+            var last = e == items[^1];
+            var sp = top ? new StackPanel { Width = TopItemWidth, Margin = new(0, 0, last ? 0 : 14, 0) } : new StackPanel { Margin = new(0, 0, 0, last ? 0 : 8) };
             sp.Children.Add(new TextBlock { Text = e.Title, FontSize = on ? 13 : 12, FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis });
             var until = e.Start - now;
-            sp.Children.Add(Text(on ? $"{Dur(e.End - now)} left" : until.TotalHours < 12 ? $"in {Dur(until)}" : $"{e.Start:ddd} {Time(e.Start)}", 11, 0.65, new(0)));
+            sp.Children.Add(Text(on ? $"{Dur(e.End - now)} left" : $"{(until.TotalHours < 12 ? $"in {Dur(until)}" : $"{e.Start:ddd} {Time(e.Start)}")}  ·  {Dur(e.End - e.Start)}", 11, 0.65, new(0)));
             if (on) sp.Children.Add(Bar(e, (now - e.Start) / (e.End - e.Start), headsUp && e.End == change));
             Strip.Children.Add(sp);
         }
@@ -401,9 +416,9 @@ public partial class MainWindow : Window
         Render();
     }
 
-    void SlideTo(double x)
+    void SlideTo(double x, double y)
     {
-        slideFrom = Left; slideTo = x; slideStart = Environment.TickCount64;
+        slideFrom = new(Left, Top); slideTo = new(x, y); slideStart = Environment.TickCount64;
         slide.Start();
     }
 
@@ -415,11 +430,18 @@ public partial class MainWindow : Window
         var wa = Native.WorkArea(this, hwnd);   // before shrinking, while it's still on the screen it was dropped on
         s.Docked = side;
         ApplyDock();
-        var x = side == "Left" ? wa.Left : wa.Right - StripWidth * s.Scale;
-        if (animate) SlideTo(x); else Left = x;
-        s.Left = x; s.Top = Top; s.Save();
+        var x = side switch { "Left" => wa.Left, "Right" => wa.Right - StripWidth * s.Scale, _ => Left };
+        var y = side == "Top" ? wa.Top : Top;
+        if (animate) SlideTo(x, y); else (Left, Top) = (x, y);
+        s.Left = x; s.Top = y; s.Save();
         FadeTo(IdleOpacity());
-        Dispatcher.InvokeAsync(() => { Top = Math.Clamp(Top, wa.Top, Math.Max(wa.Top, wa.Bottom - ActualHeight)); s.Top = Top; s.Save(); }, DispatcherPriority.Loaded);
+        // Once the strip's real size is known, keep it all on screen along its edge.
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (side == "Top") { slideTo.X = Math.Clamp(slideTo.X, wa.Left, Math.Max(wa.Left, wa.Right - ActualWidth)); if (!slide.IsEnabled) Left = slideTo.X; s.Left = slideTo.X; }
+            else { Top = Math.Clamp(Top, wa.Top, Math.Max(wa.Top, wa.Bottom - ActualHeight)); s.Top = Top; }
+            s.Save();
+        }, DispatcherPriority.Loaded);
     }
 
     /// Pop back out from the edge as the normal widget, at the same height.
@@ -430,10 +452,19 @@ public partial class MainWindow : Window
         s.Docked = null;
         ApplyDock();
         var w = s.Width * s.Scale;
-        var x = side == "Left" ? wa.Left + 16 : wa.Right - w - 16;
-        Left = side == "Left" ? wa.Left - w * 0.4 : wa.Right - w * 0.6;   // start part-hidden so it slides out
-        SlideTo(x);
-        s.Left = x; s.Top = Top; s.Save();
+        double x, y;
+        if (side == "Top")
+        {
+            (x, y) = (Math.Clamp(Left, wa.Left, Math.Max(wa.Left, wa.Right - w)), wa.Top + 16);
+            (Left, Top) = (x, wa.Top - 40);   // start part-hidden so it drops out
+        }
+        else
+        {
+            (x, y) = (side == "Left" ? wa.Left + 16 : wa.Right - w - 16, Top);
+            Left = side == "Left" ? wa.Left - w * 0.4 : wa.Right - w * 0.6;   // start part-hidden so it slides out
+        }
+        SlideTo(x, y);
+        s.Left = x; s.Top = y; s.Save();
         if (IsMouseOver) Expand();
     }
 

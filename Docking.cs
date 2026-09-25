@@ -5,21 +5,27 @@ public static class Docking
 {
     public const double Fling = 1500;   // DIPs per second; an ordinary drag stays well under this
 
-    /// "Left" or "Right" if the drag was thrown hard sideways or pushed mostly off that edge, else null (stay put).
-    public static string? Side(double left, double width, double edgeLeft, double edgeRight, double vx)
+    /// "Left", "Right" or "Top" if the drag was thrown hard that way or pushed mostly off that edge, else null (stay put).
+    public static string? Side(double left, double top, double width, double height, double edgeLeft, double edgeTop, double edgeRight, double vx, double vy)
     {
-        if (vx <= -Fling) return "Left";
-        if (vx >= Fling) return "Right";
+        if (Math.Abs(vx) >= Math.Abs(vy))
+        {
+            if (vx <= -Fling) return "Left";
+            if (vx >= Fling) return "Right";
+        }
+        else if (vy <= -Fling) return "Top";
         if (left < edgeLeft - width * 0.4) return "Left";
         if (left + width > edgeRight + width * 0.4) return "Right";
+        if (top < edgeTop - height * 0.4) return "Top";
         return null;
     }
 
-    /// Horizontal speed over the last ~100 ms before release. Zero if the pointer had stopped before letting go.
-    public static double Velocity(IReadOnlyList<(long Ms, double X)> samples, long releaseMs, int windowMs = 100)
+    /// Speed over the last ~100 ms before release. Zero if the pointer had stopped before letting go.
+    public static (double X, double Y) Velocity(IReadOnlyList<(long Ms, double X, double Y)> samples, long releaseMs, int windowMs = 100)
     {
         var recent = samples.Where(p => releaseMs - p.Ms <= windowMs).ToList();
-        if (recent.Count < 2 || recent[^1].Ms == recent[0].Ms) return 0;
-        return (recent[^1].X - recent[0].X) * 1000.0 / (recent[^1].Ms - recent[0].Ms);
+        if (recent.Count < 2 || recent[^1].Ms == recent[0].Ms) return (0, 0);
+        var dt = (recent[^1].Ms - recent[0].Ms) / 1000.0;
+        return ((recent[^1].X - recent[0].X) / dt, (recent[^1].Y - recent[0].Y) / dt);
     }
 }
