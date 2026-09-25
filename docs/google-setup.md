@@ -1,6 +1,8 @@
 # Google setup
 
-Glance talks to the Google Calendar API with an OAuth client that belongs to **you**. Nothing needs publishing or verifying, because you're the only person using it. It takes about 5 minutes.
+**You don't need this to use Glance.** The release exes have a Google sign-in client built in: run it and sign in.
+
+It's for using an OAuth client that belongs to **you**, for example when you build Glance yourself or want your own Google project. A `client.json` next to the exe takes priority over the built-in client. Nothing needs publishing or verifying, because you're the only person using it. It takes about 5 minutes.
 
 ## 1. Create a project and turn on the Calendar API
 

@@ -9,7 +9,7 @@ Glance is a small WPF app on .NET 8, with no NuGet dependencies. It talks to Goo
 ```powershell
 dotnet run -- --demo                # fake events, no Google needed (and one of each alert state)
 dotnet test tests                   # alert logic tests
-dotnet run                          # real calendar (needs client.json in bin\Debug\net8.0-windows\win-x64\)
+dotnet run                          # real calendar: needs client.json in bin\Debug\net8.0-windows\win-x64\, or GLANCE_CLIENT_ID/GLANCE_CLIENT_SECRET set when building
 dotnet publish -c Release -o out    # out\Glance.exe, framework-dependent single file
 ```
 

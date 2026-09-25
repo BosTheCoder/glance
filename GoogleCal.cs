@@ -29,13 +29,20 @@ public class GoogleCal
     {
         try
         {
-            // Accepts the JSON Google Cloud Console downloads ({"installed": {...}}) or a flat one.
+            // Your own client, if there's one: the JSON Google Cloud Console downloads ({"installed": {...}}) or a flat one.
             var j = JsonNode.Parse(File.ReadAllText(Path.Combine(Dir, "client.json")))!;
             var c = j["installed"] ?? j;
             id = (string)c["client_id"]!;
             secret = (string)c["client_secret"]!;
         }
-        catch { ConfigError = "Put client.json (Google OAuth desktop client) next to Glance.exe"; }
+        catch
+        {
+            // Else the one built into release builds (see Glance.csproj).
+            string? Meta(string key) => typeof(GoogleCal).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+                .Cast<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value;
+            if (Meta("GoogleClientId") is { Length: > 0 } builtId && Meta("GoogleClientSecret") is { Length: > 0 } builtSecret) (id, secret) = (builtId, builtSecret);
+            else ConfigError = "Put client.json (Google OAuth desktop client) next to Glance.exe";
+        }
         try { refresh = Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(TokenPath), null, DataProtectionScope.CurrentUser)); }
         catch { }
     }

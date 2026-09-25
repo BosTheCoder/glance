@@ -40,8 +40,7 @@
 
 1. Download **`Glance.exe`** from the [latest release](https://github.com/BosTheCoder/glance/releases/latest). It needs the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). If you don't want to install that, use `Glance-standalone.exe` instead (≈70 MB, no runtime needed).
 2. Put it in a folder of its own, for example `C:\Apps\Glance\`.
-3. Add a Google OAuth client as `client.json` next to it. It takes about 5 minutes: **[docs/google-setup.md](docs/google-setup.md)**.
-4. Run it. Your browser opens for sign-in, and after that the widget fills in.
+3. Run it. Your browser opens for Google sign-in, and after that the widget fills in. Glance only asks for read-only calendar access. Google warns that it hasn't verified the app: click **Advanced**, then **Go to …**. To use your own Google project instead, see **[docs/google-setup.md](docs/google-setup.md)**.
 
 Want to try it without Google first? Run `Glance.exe --demo`.
 

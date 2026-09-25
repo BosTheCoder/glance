@@ -11,10 +11,16 @@
     <PublishSingleFile>true</PublishSingleFile>
     <AssemblyName>Glance</AssemblyName>
     <ApplicationIcon>assets\glance.ico</ApplicationIcon>
-    <Version>1.13.0</Version>
+    <Version>1.13.1</Version>
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;android/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="assets\glance.ico" />
+  </ItemGroup>
+  <!-- Release builds carry the project's OAuth desktop client (CI secrets, never in the repo), so there's nothing to set up.
+       Google treats a desktop client's secret as not confidential: access still needs the user's consent in their browser. -->
+  <ItemGroup Condition="'$(GLANCE_CLIENT_ID)' != ''">
+    <AssemblyMetadata Include="GoogleClientId" Value="$(GLANCE_CLIENT_ID)" />
+    <AssemblyMetadata Include="GoogleClientSecret" Value="$(GLANCE_CLIENT_SECRET)" />
   </ItemGroup>
 </Project>

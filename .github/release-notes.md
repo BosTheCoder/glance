@@ -5,4 +5,4 @@
 
 - `Glance.apk`: the Android version ([how to install](https://github.com/BosTheCoder/glance/blob/main/docs/android.md)), added to the release after the build
 
-Put the Windows exe in its own folder and add a `client.json` ([setup guide](https://github.com/BosTheCoder/glance/blob/main/docs/google-setup.md)), then run it. To try it without Google, run `Glance.exe --demo`.
+Put the Windows exe in its own folder and run it, then sign in with Google. To try it without Google, run `Glance.exe --demo`.
