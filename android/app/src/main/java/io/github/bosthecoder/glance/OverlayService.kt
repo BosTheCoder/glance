@@ -33,6 +33,7 @@ import android.util.Log
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -52,6 +53,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
+import androidx.dynamicanimation.animation.FlingAnimation
 import androidx.dynamicanimation.animation.FloatValueHolder
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
@@ -72,6 +74,8 @@ const val BLUE = 0xFF7AA2FF.toInt()
 const val GLASS = 0xCC141414.toInt()     // Windows "Graphite"
 const val RIM = 0x1FFFFFFF               // 12% white
 const val CARD = 0x1CFFFFFF
+const val DOCK_W = 112          // dp: the side strip's readable width, plus the gesture-zone margin on its edge side
+const val DOCK_FLING = 800      // dp/s: a release faster than this is a throw, and docks
 
 fun Context.dp(v: Number) = (v.toFloat() * resources.displayMetrics.density).roundToInt()
 fun day(ms: Long): LocalDate = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -130,14 +134,23 @@ class OverlayService : Service() {
     private var banner: Alert? = null
     private var bannerUntil = 0L
     private var expanded = false
-    private var full = false        // View = Full: the card is always shown, never tucked or collapsed
-    private var tucked = false
+    private var full = false        // View = Full: the card is always shown, never collapsed
+    private var docked = false      // shrunk to the side strip on the [right] edge
+    private var faded = false       // untouched for 3 s: at the idle (or side) opacity
     private var right = true
     private var pillY = 0
     private val xSpring by lazy {
         SpringAnimation(FloatValueHolder()).apply {
-            spring = SpringForce().setStiffness(SpringForce.STIFFNESS_MEDIUM).setDampingRatio(SpringForce.DAMPING_RATIO_LOW_BOUNCY)
+            spring = SpringForce()
             addUpdateListener { _, v, _ -> lp.x = v.roundToInt(); update() }
+        }
+    }
+    /** Carries a throw's vertical momentum while docking; saves y where it stops. */
+    private val yFling by lazy {
+        FlingAnimation(FloatValueHolder()).apply {
+            friction = 1.5f
+            addUpdateListener { _, v, _ -> lp.y = v.roundToInt(); update() }
+            addEndListener { _, _, _, _ -> prefs.y = lp.y }
         }
     }
 
@@ -146,6 +159,8 @@ class OverlayService : Service() {
     private lateinit var pill: LinearLayout
     private lateinit var pillBg: GradientDrawable
     private lateinit var cardBg: GradientDrawable
+    private lateinit var dock: LinearLayout
+    private lateinit var dockBg: GradientDrawable
     private lateinit var nextBox: LinearLayout
     private lateinit var bannerRow: LinearLayout
     private lateinit var bannerGlyph: TextView
@@ -161,13 +176,18 @@ class OverlayService : Service() {
     private lateinit var body: LinearLayout
 
     private val tickR = Runnable { reload() }   // re-query each tick too: covers midnight rollover and a missed observer
-    private val tuckR = Runnable { tuck() }
+    private val fadeR = Runnable { fade() }
     private val reloadR = Runnable { reload() }
     private val observer = object : ContentObserver(h) {
         override fun onChange(selfChange: Boolean) = soon()   // sync arrives in bursts
     }
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        when (key) { "y", "right" -> {}; "view" -> applyMode(); else -> soon() }
+        when (key) {
+            "y", "right", "docked" -> {}
+            "view" -> applyMode()
+            "idleOpacity", "dockOpacity" -> if (faded) { faded = false; fade() }
+            else -> soon()
+        }
     }
 
     private val screen: Rect get() = if (Build.VERSION.SDK_INT >= 30) wm.currentWindowMetrics.bounds
@@ -210,7 +230,7 @@ class OverlayService : Service() {
         running = false
         h.removeCallbacksAndMessages(null)
         io.shutdownNow()
-        if (::lp.isInitialized) xSpring.cancel()
+        if (::lp.isInitialized) { xSpring.cancel(); yFling.cancel() }
         contentResolver.unregisterContentObserver(observer)
         prefs.sp.unregisterOnSharedPreferenceChangeListener(prefListener)
         if (::root.isInitialized && root.isAttachedToWindow) wm.removeView(root)
@@ -222,7 +242,7 @@ class OverlayService : Service() {
         if (!::root.isInitialized) return
         if (expanded) collapse()
         scroll.maxH = (H * 0.6f).toInt() - dp(48)
-        if (full) lp.width = cardW()
+        showForm()
         lp.y = clampY(lp.y, root.height)
         update()
     }
@@ -295,18 +315,22 @@ class OverlayService : Service() {
             addView(clock, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)); addView(scroll)
         }
 
+        dockBg = GradientDrawable().apply { setColor(GLASS); setStroke(dp(1), RIM) }
+        dock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = dockBg; visibility = View.GONE }
+
         root = object : FrameLayout(this) {
             // Full view: any touch, even one the agenda scroll takes, wakes the card and restarts the idle timer.
             override fun dispatchTouchEvent(e: MotionEvent): Boolean {
-                if (full) when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> { h.removeCallbacks(tuckR); if (tucked) untuck() }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleTuck()
+                if (full && !docked) when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { h.removeCallbacks(fadeR); if (faded) wake() }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleFade()
                 }
                 return super.dispatchTouchEvent(e)
             }
         }.apply {
             addView(pill, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            addView(dock, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
             setOnTouchListener { _, e -> onTouch(e) }
         }
         lp = WindowManager.LayoutParams(
@@ -321,25 +345,34 @@ class OverlayService : Service() {
 
     private fun cardW() = if (full) minOf((W * 0.85f).toInt(), dp(360)) else (W * 0.85f).toInt()
 
-    /** The banner lives in whichever of pill or card is showing, so alerts show in both views. */
-    private fun showCard(on: Boolean) {
+    /** Side strip width: the readable part plus the back-gesture zone on its edge, so every touch on the text is ours. */
+    private fun stripW(): Int { val e = edges(); return dp(DOCK_W) + if (right) e.right else e.left }
+
+    /** Show the pill, the card or the side strip. The alert banner lives in the pill or card, whichever is up. */
+    private fun showForm() {
+        val form = when { docked -> dock; full || expanded -> card; else -> pill }
         (bannerRow.parent as? ViewGroup)?.removeView(bannerRow)
-        if (on) card.addView(bannerRow, 0) else pill.addView(bannerRow, 0)
-        pill.visibility = if (on) View.GONE else View.VISIBLE
-        card.visibility = if (on) View.VISIBLE else View.GONE
+        if (form === card) card.addView(bannerRow, 0) else pill.addView(bannerRow, 0)
+        for (v in listOf(pill, card, dock)) v.visibility = if (v === form) View.VISIBLE else View.GONE
+        lp.width = when { docked -> stripW(); expanded -> (W * 0.85f).toInt(); full -> cardW(); else -> WRAP_CONTENT }
+        if (docked) {
+            // Flush to the edge: round only the inward corners, pad the edge side clear of the gesture zone.
+            val r = dp(14).toFloat(); val gesture = lp.width - dp(DOCK_W)
+            dockBg.cornerRadii = if (right) floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r) else floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
+            dock.setPadding(dp(10) + if (right) 0 else gesture, dp(8), dp(10) + if (right) gesture else 0, dp(9))
+        }
     }
 
-    /** Compact (pill, expands on tap, tucks away) or Full (the card, always). Re-run when the setting changes. */
+    /** Compact (pill, expands on tap) or Full (the card, always), docked or not. Re-run when the setting changes. */
     private fun applyMode() {
-        full = prefs.view == "Full"
-        expanded = false; tucked = false
-        xSpring.cancel(); h.removeCallbacks(tuckR)
-        showCard(full)
+        full = prefs.view == "Full"; docked = prefs.docked
+        expanded = false; faded = false
+        xSpring.cancel(); yFling.cancel(); h.removeCallbacks(fadeR)
+        showForm()
         scroll.scrollTo(0, 0)
-        lp.width = if (full) cardW() else WRAP_CONTENT
         lp.gravity = side(); lp.x = 0
         root.alpha = 1f
-        update(); render(); scheduleTuck()
+        update(); render(); scheduleFade()
     }
 
     // ---------- data + alerts ----------
@@ -378,7 +411,7 @@ class OverlayService : Service() {
             val sx = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.04f)
             val sy = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.04f)
             val al = PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.7f)
-            ObjectAnimator.ofPropertyValuesHolder(pill, sx, sy, al).apply {
+            ObjectAnimator.ofPropertyValuesHolder(listOf(pill, card, dock).first { it.visibility == View.VISIBLE }, sx, sy, al).apply {
                 duration = 260; repeatCount = 3; repeatMode = ValueAnimator.REVERSE; start()   // two pulses
             }
         } else if (prefs.vibrate) {
@@ -437,14 +470,38 @@ class OverlayService : Service() {
             null -> ""
         }
         val rim = when { b is Alert.Starting -> GREEN; b is Alert.Reminder -> BLUE; heads -> AMBER; else -> RIM }
-        pillBg.setStroke(dp(1), rim); cardBg.setStroke(dp(1), rim)
+        pillBg.setStroke(dp(1), rim); cardBg.setStroke(dp(1), rim); dockBg.setStroke(dp(1), rim)
 
         nextBox.removeAllViews()
         if (!full) Plan.next(events, now, prefs.nextCount).forEach { nextBox.addView(nextRow(it, now)) }
 
-        if (alerting()) { h.removeCallbacks(tuckR); if (tucked) untuck() }
-        else if (!tucked && !expanded && !touching) scheduleTuck()
-        if (expanded || full) renderCard(now, cur, up)
+        // An alert brings it to full opacity (docked too: it stays docked); otherwise it fades after 3 s.
+        if (alerting()) { h.removeCallbacks(fadeR); if (faded) wake() }
+        else if (!faded && !expanded && !touching) scheduleFade()
+        if (docked) renderDock(now, heads, b)
+        else if (expanded || full) renderCard(now, cur, up)
+    }
+
+    /** Side strip: what's on now (title, time left, bar), then what's next, [Prefs.dockCount] rows in all. */
+    private fun renderDock(now: Long, heads: Boolean, b: Alert?) {
+        dock.removeAllViews()
+        val rows = Plan.strip(events, now, prefs.dockCount)
+        if (rows.isEmpty()) dock.addView(ui.text(if (Cal.granted(this)) "Free" else "No calendar access", 12.5f, 0xCCFFFFFF.toInt(), bold = true))
+        rows.forEachIndexed { i, e ->
+            val on = e.begin <= now
+            var sub = if (on) "${dur(e.end - now)} left" else whenText(e.begin, now)
+            var subColor = if (heads && i == 0) AMBER else 0xB3FFFFFF.toInt()
+            if (b?.ev == e) when (b) {   // the alert's own row says so, in the alert colour
+                is Alert.Starting -> { sub = "▶ Now"; subColor = GREEN }
+                is Alert.Reminder -> { sub = "🔔 ${whenText(e.begin, now)}"; subColor = BLUE }
+            }
+            dock.addView(ui.text(e.title, if (on) 12.5f else 12f, if (on) Color.WHITE else 0xE6FFFFFF.toInt(), bold = on).apply {
+                if (i > 0) setPadding(0, dp(6), 0, 0)
+            })
+            dock.addView(ui.text(sub, 11f, subColor))
+            if (on) dock.addView(Bar(ui).apply { set((now - e.begin).toFloat() / (e.end - e.begin), e.color or 0xFF000000.toInt()) },
+                LinearLayout.LayoutParams(MATCH_PARENT, dp(3)).apply { topMargin = dp(4) })
+        }
     }
 
     /** One "Up next" line in the pill: dot, start time, title. */
@@ -530,31 +587,58 @@ class OverlayService : Service() {
 
     private fun update() { if (root.isAttachedToWindow) wm.updateViewLayout(root, lp) }
 
-    /** Spring lp.x to [target]; retargeting mid-flight keeps the current velocity. */
-    private fun animX(target: Int) {
-        if (!xSpring.isRunning) xSpring.setStartValue(lp.x.toFloat())
+    /**
+     * Spring lp.x to [target]; retargeting mid-flight keeps the current velocity. [velocity] (px/s, in lp.x's
+     * direction) starts it with a throw's momentum; [gentle] is the slow, no-bounce glide used for docking.
+     */
+    private fun animX(target: Int, velocity: Float = 0f, gentle: Boolean = false) {
+        xSpring.spring.setStiffness(if (gentle) SpringForce.STIFFNESS_LOW else SpringForce.STIFFNESS_MEDIUM)
+            .setDampingRatio(if (gentle) SpringForce.DAMPING_RATIO_NO_BOUNCY else SpringForce.DAMPING_RATIO_LOW_BOUNCY)
+        if (!xSpring.isRunning) xSpring.setStartValue(lp.x.toFloat()).setStartVelocity(velocity)
         xSpring.animateToFinalPosition(target.toFloat())
     }
 
-    private fun scheduleTuck() { h.removeCallbacks(tuckR); h.postDelayed(tuckR, 3000) }
+    private fun scheduleFade() { h.removeCallbacks(fadeR); h.postDelayed(fadeR, 3000) }
 
-    /** Compact: slide mostly off the edge, leaving a tab. Both views fade to the idle opacity. */
-    private fun tuck() {
+    /** Untouched: fade to the idle opacity, or the side opacity when docked. It never moves on its own. */
+    private fun fade() {
         if (expanded || touching || alerting()) return
-        tucked = true
-        if (!full) {
-            // The tab must stick out past the back-gesture zone, or a swipe there goes to the system instead.
-            val w = root.width
-            val gesture = edges().let { if (right) it.right else it.left }
-            animX(-(w - minOf(w, maxOf(dp(28), (w * 0.35f).toInt(), gesture + dp(20)))))
-        }
-        root.animate().alpha(prefs.idleOpacity / 100f).setDuration(300).start()
+        faded = true
+        root.animate().alpha((if (docked) prefs.dockOpacity else prefs.idleOpacity) / 100f).setDuration(300).start()
     }
 
-    private fun untuck() {
-        tucked = false
-        if (!full) animX(0)
+    private fun wake() {
+        faded = false
         root.animate().alpha(1f).setDuration(150).start()
+    }
+
+    /** Shrink to the side strip on [toRight]'s edge and glide there, carrying the throw's momentum. */
+    private fun dock(toRight: Boolean, vx: Float, vy: Float) {
+        val w = root.width
+        val left = if (right) W - lp.x - w else lp.x
+        right = toRight; docked = true
+        prefs.right = right; prefs.docked = true
+        showForm(); lp.gravity = side()
+        lp.x = if (right) W - left - w else left   // how far the released view was from the dock edge
+        render()
+        dock.measure(View.MeasureSpec.makeMeasureSpec(lp.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED)
+        val maxY = clampY(Int.MAX_VALUE, dock.measuredHeight)
+        lp.y = lp.y.coerceIn(0, maxY)
+        update()
+        animX(0, velocity = if (right) -vx else vx, gentle = true)
+        yFling.cancel()
+        yFling.setMinValue(0f).setMaxValue(maxY.toFloat()).setStartValue(lp.y.toFloat()).setStartVelocity(vy).start()
+        fade()   // side opacity straight away, unless an alert is showing
+    }
+
+    /** Back to the pill (Compact) or card (Full) on the same side and at the same y. [spring]: pop out from the edge. */
+    private fun undock(spring: Boolean) {
+        docked = false; prefs.docked = false
+        xSpring.cancel(); yFling.cancel()
+        showForm(); lp.gravity = side()
+        lp.x = if (spring) -dp(DOCK_W) else 0
+        wake(); render(); update()
+        if (spring) animX(0)
     }
 
     /** Land on whichever edge is nearer. x is measured from that edge (gravity LEFT or RIGHT), so 0 = flush. */
@@ -574,10 +658,10 @@ class OverlayService : Service() {
 
     private fun expand() {
         expanded = true
-        h.removeCallbacks(tuckR); xSpring.cancel()
+        h.removeCallbacks(fadeR); xSpring.cancel()
         pillY = lp.y
-        showCard(true)
-        lp.width = (W * 0.85f).toInt(); lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; lp.x = 0
+        showForm()
+        lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; lp.x = 0
         lp.y = minOf(lp.y, (H * 0.35f).toInt())
         root.alpha = 1f
         render(); update()
@@ -586,9 +670,9 @@ class OverlayService : Service() {
     private fun collapse() {
         if (!expanded) return
         expanded = false
-        showCard(false)
+        showForm()
         scroll.scrollTo(0, 0)
-        lp.width = WRAP_CONTENT; lp.gravity = side(); lp.x = 0; lp.y = pillY
+        lp.gravity = side(); lp.x = 0; lp.y = pillY
         update(); render()
     }
 
@@ -602,10 +686,17 @@ class OverlayService : Service() {
     private var dragging = false
     private var touching = false
     private var longFired = false
-    private var wasTucked = false
+    private var velocity: VelocityTracker? = null
+    private var lastMove = 0L
+    private val flingV by lazy { dp(DOCK_FLING).toFloat() }
     private val longR = Runnable {
         longFired = true
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /** VelocityTracker in screen coordinates: the window itself moves under the finger. */
+    private fun track(e: MotionEvent) {
+        val c = MotionEvent.obtain(e); c.setLocation(e.rawX, e.rawY); velocity?.addMovement(c); c.recycle()
     }
 
     private fun onTouch(e: MotionEvent): Boolean {
@@ -613,20 +704,27 @@ class OverlayService : Service() {
         if (expanded) return false
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                touching = true; dragging = false; longFired = false; wasTucked = tucked
+                touching = true; dragging = false; longFired = false
                 downX = e.rawX; downY = e.rawY
-                h.removeCallbacks(tuckR)
-                if (tucked) untuck()
+                velocity?.recycle(); velocity = VelocityTracker.obtain(); track(e)
+                h.removeCallbacks(fadeR)
+                if (faded) wake()
                 h.postDelayed(longR, ViewConfiguration.getLongPressTimeout().toLong())
             }
             MotionEvent.ACTION_MOVE -> {
+                track(e); lastMove = e.eventTime
                 if (!dragging && !longFired && hypot(e.rawX - downX, e.rawY - downY) > slop) {
-                    dragging = true; h.removeCallbacks(longR); xSpring.cancel()
+                    dragging = true; h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel()
                     startX = lp.x; startY = lp.y; downX = e.rawX; downY = e.rawY
+                }
+                // Docked, a drag slides the strip along its edge until it's pulled inward: then it undocks and follows.
+                if (dragging && docked && (if (right) downX - e.rawX else e.rawX - downX) > dp(24)) {
+                    undock(spring = false)
+                    startX = lp.x; downX = e.rawX
                 }
                 if (dragging) {
                     val dx = (e.rawX - downX).toInt()
-                    lp.x = startX + if (right) -dx else dx
+                    if (!docked) lp.x = startX + if (right) -dx else dx
                     lp.y = startY + (e.rawY - downY).toInt()
                     update()
                 }
@@ -635,13 +733,29 @@ class OverlayService : Service() {
                 touching = false
                 h.removeCallbacks(longR)
                 val tap = e.actionMasked == MotionEvent.ACTION_UP
+                // Velocity from the MOVE samples (the docs say it reads 0 once UP is added); a pause before lifting is no throw.
+                var vx = 0f; var vy = 0f
+                velocity?.let {
+                    if (tap && e.eventTime - lastMove < 100) {
+                        it.computeCurrentVelocity(1000, ViewConfiguration.get(this).scaledMaximumFlingVelocity.toFloat())
+                        vx = it.xVelocity; vy = it.yVelocity
+                    }
+                    it.recycle()
+                }
+                velocity = null
                 when {
-                    dragging -> snap()
-                    !tap || longFired || wasTucked -> {}
+                    dragging && docked -> { lp.y = clampY(lp.y, root.height); update(); prefs.y = lp.y }
+                    dragging -> {
+                        val w = root.width
+                        val to = dockSide(if (right) W - lp.x - w else lp.x, w, W, vx, flingV)
+                        if (to != null) dock(to == Side.RIGHT, vx, vy) else snap()
+                    }
+                    !tap || longFired -> {}
+                    docked -> { root.performClick(); undock(spring = true) }   // tap the strip: back out
                     banner != null -> { root.performClick(); banner = null; render() }   // tap dismisses the alert
                     else -> { root.performClick(); if (!full) expand() }
                 }
-                if (!expanded) scheduleTuck()
+                if (!expanded && !faded) scheduleFade()
             }
         }
         return true

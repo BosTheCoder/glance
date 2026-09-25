@@ -27,6 +27,7 @@
 - **All-day events as chips** under the clock (weather, birthdays, trips with "day 2/5"), visible without hovering.
 - **Sleek alerts inside the widget**, not Windows toasts: amber when things are about to change, a green ▶ banner when an event starts, and a blue 🔔 banner for the event's own Google reminders. See [Alerts](#alerts).
 - **Hover to expand** into a scrollable agenda for the days ahead. When you move away it shrinks back and the scroll resets.
+- **Throw it to the side** to get it out of the way. It glides to that screen edge as a slim strip that still shows what's on, the time left and what's next. Click it to bring it back.
 - **Fades when idle.** It's see-through while you work and turns solid when you hover it.
 - **Acrylic glass** in 7 themes, three glass strengths and any custom colour.
 - **Drag to move, drag the corner to resize.** It can be pinned on top and it remembers where you put it.
@@ -52,6 +53,7 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 | --- | --- |
 | Hover | Expand the agenda and make the widget solid. Right-click → **View → Full** keeps it expanded all the time |
 | Drag anywhere | Move it |
+| Throw it sideways, or push it mostly off an edge | Dock it to that edge as a strip. Click the strip to bring it back, or drag it up and down the edge |
 | Drag the bottom-right corner | Resize the width, and the list height while expanded |
 | Click the pin | Keep it on top of other windows |
 | <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | Hide or show it from anywhere (change it in the menu). Running `Glance.exe` again also brings it back |

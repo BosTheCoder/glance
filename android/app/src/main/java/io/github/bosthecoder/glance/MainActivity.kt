@@ -81,6 +81,8 @@ class MainActivity : ComponentActivity() {
         header("Settings")
         choice("View", listOf("Compact", "Full"), { it }, prefs.view) { prefs.view = it }
         choice("Up next", (1..7).toList(), { "$it" }, prefs.nextCount) { prefs.nextCount = it }
+        choice("Items at the side", (1..5).toList(), { "$it" }, prefs.dockCount) { prefs.dockCount = it }
+        choice("Opacity at the side", listOf(25, 50, 75, 100), { "$it%" }, prefs.dockOpacity) { prefs.dockOpacity = it }
         choice("Idle opacity", listOf(25, 50, 75, 100), { "$it%" }, prefs.idleOpacity) { prefs.idleOpacity = it }
         choice("Heads-up before a change", listOf(2, 5, 10), { "$it min" }, prefs.headsUp) { prefs.headsUp = it }
         toggle("Vibrate on reminders", prefs.vibrate) { prefs.vibrate = it }
@@ -96,7 +98,7 @@ class MainActivity : ComponentActivity() {
             }
             list.postDelayed({ build() }, 300)
         })
-        list.addView(text("Compact: tap the pill to expand it. Full: drag the card by its clock. Drag to move, long-press for this screen.", 12f, 0x80FFFFFF.toInt()).apply {
+        list.addView(text("Tap the pill to expand it (Full view: drag the card by its clock). Throw it at an edge to dock it as a side strip, tap the strip to bring it back. Long-press for this screen.", 12f, 0x80FFFFFF.toInt()).apply {
             maxLines = 3; setPadding(0, dp(10), 0, 0)
         })
     }

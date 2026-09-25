@@ -29,6 +29,13 @@ public partial class MainWindow : Window
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(15) };
     readonly DispatcherTimer collapseDelay = new() { Interval = TimeSpan.FromMilliseconds(400) };
     readonly DispatcherTimer fade = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    // Docking: throw it (or push it mostly off) a screen edge and it glides there as a narrow strip.
+    const double StripWidth = 170;
+    readonly List<(long Ms, double X)> dragTrail = new();
+    bool dragging;
+    readonly DispatcherTimer slide = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    double slideFrom, slideTo;
+    long slideStart;
     // Alerts: amber = something changes soon, green = an event just started, blue = one of the event's reminders.
     static readonly Color Amber = Color.FromRgb(0xF5, 0xA6, 0x23), Green = Color.FromRgb(0x3D, 0xDC, 0x97), Blue = Color.FromRgb(0x7A, 0xA2, 0xFF);
     readonly List<Alert> banners = new();
@@ -56,7 +63,8 @@ public partial class MainWindow : Window
         };
         Loaded += async (_, _) =>
         {
-            FadeTo(s.IdleOpacity);
+            if (s.Docked != null) DockTo(s.Docked, animate: false);   // re-fit to the edge in case the screens changed
+            FadeTo(IdleOpacity());
             if (!demo && !g.SignedIn && g.ConfigError == null && s.Calendars == null) await SignIn();   // first run
             else await Refresh();
         };
@@ -72,19 +80,42 @@ public partial class MainWindow : Window
             if (Math.Abs(alpha - alphaTarget) < 0.001) fade.Stop();
         };
 
+        slide.Tick += (_, _) =>
+        {
+            var p = Math.Min(1, (Environment.TickCount64 - slideStart) / 320.0);
+            Left = slideFrom + (slideTo - slideFrom) * (1 - Math.Pow(1 - p, 3));   // ease out: quick start, gentle landing
+            if (p >= 1) slide.Stop();
+        };
+
         MouseEnter += async (_, _) =>
         {
             collapseDelay.Stop();
-            Expand();
+            if (s.Docked != null) { hovering = true; FadeTo(1); }   // the strip lights up but stays a strip
+            else Expand();
             if (DateTime.Now - lastFetch > TimeSpan.FromSeconds(20)) await Refresh();
         };
         MouseLeave += (_, _) => { if (!ContextMenu.IsOpen && !Grip.IsDragging) collapseDelay.Start(); };
         ContextMenu.Closed += (_, _) => { if (!IsMouseOver) collapseDelay.Start(); };
         ContextMenuOpening += (_, _) => BuildMenu();
+        LocationChanged += (_, _) => { if (dragging) dragTrail.Add((Environment.TickCount64, Left)); };
         MouseLeftButtonDown += (_, _) =>
         {
+            slide.Stop();
+            var (x0, y0) = (Left, Top);
+            dragTrail.Clear();
+            dragging = true;
             DragMove();
+            dragging = false;
             shiftedFrom = null;
+            var wa = Native.WorkArea(this, hwnd);
+            if (s.Docked == null)
+            {
+                var side = Docking.Side(Left, ActualWidth, wa.Left, wa.Right, Docking.Velocity(dragTrail, Environment.TickCount64));
+                if (side != null) { DockTo(side); return; }
+            }
+            else if (Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4) { Undock(); return; }   // a click brings it back
+            else if (s.Docked == "Left" ? Left < wa.Left + 60 : Left + ActualWidth > wa.Right - 60) { DockTo(s.Docked); return; }   // slid along the edge
+            else { s.Docked = null; ApplyDock(); }   // pulled away from the edge: back to normal where it was dropped
             s.Left = Left; s.Top = Top; s.Save();
         };
         Pin.MouseLeftButtonDown += (_, e) => { e.Handled = true; Set(() => s.Pinned = !s.Pinned); };
@@ -106,6 +137,7 @@ public partial class MainWindow : Window
             var fresh = Settings.Load();
             fresh.Left = s.Left; fresh.Top = s.Top;
             s = fresh;
+            ApplyDock();
             ApplyLook();
         });
         watcher.EnableRaisingEvents = true;
@@ -184,7 +216,7 @@ public partial class MainWindow : Window
 
     void ApplySize()
     {
-        Root.Width = s.Width;
+        Root.Width = s.Docked != null ? StripWidth : s.Width;
         Zoom.ScaleX = Zoom.ScaleY = s.Scale;
         Scroll.MaxHeight = s.ListHeight;
     }
@@ -203,7 +235,9 @@ public partial class MainWindow : Window
         CheckAlerts(now);
         var change = Alerts.NextChange(events, now);
         headsUp = s.HeadsUpMinutes > 0 && change is DateTime c && c - now <= TimeSpan.FromMinutes(s.HeadsUpMinutes);
-        Root.BorderBrush = headsUp ? new SolidColorBrush(Color.FromArgb(0x99, Amber.R, Amber.G, Amber.B)) : Brushes.Transparent;
+        // Docked, the banners don't fit, so the strip's rim takes the alert's colour instead.
+        Color? rim = s.Docked != null && banners.Count > 0 ? (banners[^1].Kind == AlertKind.Reminder ? Blue : Green) : headsUp ? Amber : null;
+        Root.BorderBrush = rim is Color r ? new SolidColorBrush(Color.FromArgb(s.Docked != null ? (byte)0xDD : (byte)0x99, r.R, r.G, r.B)) : Brushes.Transparent;
         RenderBanners(now);
         if (!hovering && IsVisible) FadeTo(IdleOpacity());
 
@@ -222,6 +256,8 @@ public partial class MainWindow : Window
                 headsUp && e.End == change));
         if (current.Count == 0 && (demo || g.SignedIn))
             NowPanel.Children.Add(Text(upcoming.Count > 0 && upcoming[0].Start.Date == now.Date ? $"Free until {Time(upcoming[0].Start)}" : "Free", 15, 0.8));
+
+        if (s.Docked != null) RenderStrip(now, current, upcoming, change);
 
         var next = upcoming.Take(s.NextCount).ToList();
         if (next.Count > 0)
@@ -265,7 +301,8 @@ public partial class MainWindow : Window
         Text = t, FontSize = size, Opacity = opacity, Margin = margin ?? new(0, 0, 0, 2), TextTrimming = TextTrimming.CharacterEllipsis,
     };
 
-    UIElement Card(Ev e, string sub, double progress, bool endingSoon = false)
+    /// Time-used bar in the event's colour (amber when it's about to end).
+    UIElement Bar(Ev e, double progress, bool endingSoon)
     {
         progress = Math.Clamp(progress, 0, 1);
         var bar = new Grid { Height = 3, Margin = new(0, 6, 0, 0) };
@@ -275,7 +312,12 @@ public partial class MainWindow : Window
         var rest = new Border { Background = track, CornerRadius = new(1.5) };
         Grid.SetColumn(rest, 1);
         bar.Children.Add(rest);
+        return bar;
+    }
 
+    UIElement Card(Ev e, string sub, double progress, bool endingSoon = false)
+    {
+        var bar = Bar(e, progress, endingSoon);
         var sp = new StackPanel();
         sp.Children.Add(new TextBlock { Text = e.Title, FontSize = 17, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
         var subText = Text(sub, 12, 0.7);
@@ -319,6 +361,81 @@ public partial class MainWindow : Window
         : t.Minutes == 0 ? $"{(int)t.TotalHours}h" : $"{(int)t.TotalHours}h {t.Minutes}m";
 
     string In(TimeSpan t, DateTime at) => t.TotalHours < 12 ? $"IN {Dur(t).ToUpper()}" : $"{at:ddd} {Time(at)}".ToUpper();
+
+    // ---------- side strip ----------
+
+    /// The docked form: what's on with time left and a bar, then what's next, [DockCount] events in all.
+    void RenderStrip(DateTime now, List<Ev> current, List<Ev> upcoming, DateTime? change)
+    {
+        Strip.Children.Clear();
+        foreach (var a in banners.Where(b => b.Kind == AlertKind.Reminder).TakeLast(1))
+        {
+            var line = new TextBlock { FontSize = 11.5, Foreground = new SolidColorBrush(Blue), Margin = new(0, 0, 0, 6), TextTrimming = TextTrimming.CharacterEllipsis };
+            line.Inlines.Add(new System.Windows.Documents.Run("\uEA8F  ") { FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets") });
+            line.Inlines.Add(new System.Windows.Documents.Run(a.Event.Title));
+            Strip.Children.Add(line);
+        }
+        var items = current.Concat(upcoming).Take(Math.Clamp(s.DockCount, 1, 5)).ToList();
+        if (items.Count == 0) Strip.Children.Add(Text("Nothing coming up", 12, 0.6));
+        foreach (var e in items)
+        {
+            var on = e.Start <= now;
+            var sp = new StackPanel { Margin = new(0, 0, 0, e == items[^1] ? 0 : 8) };
+            sp.Children.Add(new TextBlock { Text = e.Title, FontSize = on ? 13 : 12, FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis });
+            var until = e.Start - now;
+            sp.Children.Add(Text(on ? $"{Dur(e.End - now)} left" : until.TotalHours < 12 ? $"in {Dur(until)}" : $"{e.Start:ddd} {Time(e.Start)}", 11, 0.65, new(0)));
+            if (on) sp.Children.Add(Bar(e, (now - e.Start) / (e.End - e.Start), headsUp && e.End == change));
+            Strip.Children.Add(sp);
+        }
+    }
+
+    /// Swap between the full widget and the strip.
+    void ApplyDock()
+    {
+        var docked = s.Docked != null;
+        Main.Visibility = docked ? Visibility.Collapsed : Visibility.Visible;
+        Strip.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
+        Grip.Visibility = docked ? Visibility.Collapsed : Visibility.Visible;
+        Root.Padding = docked ? new(10, 8, 10, 9) : new(14, 10, 14, 12);
+        ApplySize();
+        Render();
+    }
+
+    void SlideTo(double x)
+    {
+        slideFrom = Left; slideTo = x; slideStart = Environment.TickCount64;
+        slide.Start();
+    }
+
+    /// Shrink to the strip and glide flush against that edge of the current screen.
+    void DockTo(string side, bool animate = true)
+    {
+        collapseDelay.Stop();
+        if (hovering) Collapse();
+        var wa = Native.WorkArea(this, hwnd);   // before shrinking, while it's still on the screen it was dropped on
+        s.Docked = side;
+        ApplyDock();
+        var x = side == "Left" ? wa.Left : wa.Right - StripWidth * s.Scale;
+        if (animate) SlideTo(x); else Left = x;
+        s.Left = x; s.Top = Top; s.Save();
+        FadeTo(IdleOpacity());
+        Dispatcher.InvokeAsync(() => { Top = Math.Clamp(Top, wa.Top, Math.Max(wa.Top, wa.Bottom - ActualHeight)); s.Top = Top; s.Save(); }, DispatcherPriority.Loaded);
+    }
+
+    /// Pop back out from the edge as the normal widget, at the same height.
+    void Undock()
+    {
+        var wa = Native.WorkArea(this, hwnd);
+        var side = s.Docked;
+        s.Docked = null;
+        ApplyDock();
+        var w = s.Width * s.Scale;
+        var x = side == "Left" ? wa.Left + 16 : wa.Right - w - 16;
+        Left = side == "Left" ? wa.Left - w * 0.4 : wa.Right - w * 0.6;   // start part-hidden so it slides out
+        SlideTo(x);
+        s.Left = x; s.Top = Top; s.Save();
+        if (IsMouseOver) Expand();
+    }
 
     // ---------- hover ----------
 
@@ -376,7 +493,11 @@ public partial class MainWindow : Window
     void FadeTo(double target) { alphaTarget = target; fade.Start(); }
 
     /// Idle is see-through, but an unread alert keeps it fully lit and a change coming up keeps it mostly lit.
-    double IdleOpacity() => banners.Count > 0 ? 1 : headsUp ? Math.Max(s.IdleOpacity, 0.85) : s.IdleOpacity;
+    double IdleOpacity()
+    {
+        var idle = s.Docked != null ? s.DockOpacity : s.IdleOpacity;
+        return banners.Count > 0 ? 1 : headsUp ? Math.Max(idle, 0.85) : idle;
+    }
 
     // ---------- alerts ----------
 

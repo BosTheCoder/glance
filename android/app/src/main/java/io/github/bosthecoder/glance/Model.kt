@@ -30,6 +30,9 @@ object Plan {
     /** The "Up next" rows: the first [count] upcoming timed events (Windows `NextCount`). */
     fun next(events: List<Ev>, now: Long, count: Int) = upcoming(events, now).take(count.coerceIn(1, 7))
 
+    /** Side-strip rows: what's on now (if anything), then upcoming timed events; [count] rows in all. */
+    fun strip(events: List<Ev>, now: Long, count: Int) = (current(events, now).take(1) + upcoming(events, now)).take(count.coerceIn(1, 5))
+
     /** When the pill's content next changes: the current event ends or the next one starts. */
     fun nextChange(events: List<Ev>, now: Long): Long? =
         (current(events, now).map { it.end } + listOfNotNull(upcoming(events, now).firstOrNull()?.begin)).minOrNull()
@@ -44,6 +47,21 @@ object Plan {
             val t = if (e.allDay) emptyList() else listOf(e.begin, e.end, e.begin - headsUpMinutes * MIN, e.end - headsUpMinutes * MIN)
             t + e.reminders.map { e.begin - it * MIN }
         }.filter { it > now }.minOrNull()
+}
+
+enum class Side { LEFT, RIGHT }
+
+/**
+ * Where a released drag docks, or null to just snap to the nearer edge as usual. A throw faster than
+ * [flingV] (px/s) docks on the side it was thrown towards; otherwise more than 40% of the view past a
+ * screen edge docks on that edge. [left] is the view's left in screen pixels, so it goes negative off the left.
+ */
+fun dockSide(left: Int, width: Int, screenW: Int, vx: Float, flingV: Float): Side? = when {
+    vx > flingV -> Side.RIGHT
+    vx < -flingV -> Side.LEFT
+    -left > width * 0.4f -> Side.LEFT
+    left + width - screenW > width * 0.4f -> Side.RIGHT
+    else -> null
 }
 
 /**

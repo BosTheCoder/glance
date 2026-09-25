@@ -16,7 +16,8 @@
             <Border.LayoutTransform>
                 <ScaleTransform x:Name="Zoom"/>
             </Border.LayoutTransform>
-            <StackPanel>
+            <Grid>
+            <StackPanel x:Name="Main">
                 <DockPanel Margin="0,0,0,8">
                     <TextBlock x:Name="Pin" DockPanel.Dock="Right" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                FontSize="12" Opacity="0" Cursor="Hand" ToolTip="Pin on top"/>
@@ -32,6 +33,9 @@
                 </ScrollViewer>
                 <TextBlock x:Name="Status" Opacity="0.75" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
             </StackPanel>
+            <!-- Docked at a screen edge: current task, time left and what's next, narrow -->
+            <StackPanel x:Name="Strip" Visibility="Collapsed"/>
+            </Grid>
         </Border>
         <!-- Drag to resize: width always, list height while expanded -->
         <Thumb x:Name="Grip" Width="18" Height="18" HorizontalAlignment="Right" VerticalAlignment="Bottom"

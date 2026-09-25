@@ -6,7 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 // Fails if: the heads-up window is computed from the wrong edge, all-day events leak into now/next,
-// alerts replay after a restart, a reminder fires twice, or Up next shows the wrong count/order.
+// alerts replay after a restart, a reminder fires twice, Up next shows the wrong count/order,
+// the side strip shows all-day events, or a release docks when it shouldn't (or the wrong way).
 class AlertsTest {
     private val t0 = 1_800_000_000_000L
     private fun ev(id: Long, startMin: Int, lenMin: Int, allDay: Boolean = false, reminders: List<Int> = emptyList()) =
@@ -31,6 +32,25 @@ class AlertsTest {
         assertEquals(listOf(lunch) + (1..6).map { ev(10L + it, 60 * it, 30) }, Plan.next(all, t0, 7))
         assertEquals(3, Plan.next(all, t0, 3).size)
         assertEquals(listOf(ev(18, 480, 30)), Plan.next(all, t0 + 461 * MIN, 5))   // fewer left than asked for
+    }
+
+    @Test fun stripIsNowThenUpcomingNoAllDay() {
+        assertEquals(listOf(meeting, lunch), Plan.strip(events, t0, 2))
+        assertEquals(listOf(meeting), Plan.strip(events, t0, 1))
+        val tomorrow = ev(31, 24 * 60, 24 * 60, allDay = true)
+        assertEquals(listOf(lunch), Plan.strip(events + tomorrow, meeting.end, 5))   // free: upcoming only, never all-day
+    }
+
+    @Test fun dockOnFastThrowOrWhenMostlyOffScreen() {
+        val w = 300; val screen = 1080; val fling = 2000f
+        assertEquals(null, dockSide(400, w, screen, 0f, fling))                // plain release mid-screen: snap
+        assertEquals(null, dockSide(400, w, screen, 1900f, fling))             // quick drag, not a throw
+        assertEquals(Side.RIGHT, dockSide(100, w, screen, 2500f, fling))       // thrown right from the left side
+        assertEquals(Side.LEFT, dockSide(700, w, screen, -2500f, fling))       // thrown left from the right side
+        assertEquals(null, dockSide(-100, w, screen, 0f, fling))               // a third past the left edge: snap
+        assertEquals(Side.LEFT, dockSide(-130, w, screen, 0f, fling))          // over 40% past: dock left
+        assertEquals(Side.RIGHT, dockSide(screen - 170, w, screen, 0f, fling)) // 130 of 300 past the right edge
+        assertEquals(Side.LEFT, dockSide(screen - 170, w, screen, -2500f, fling))   // the throw wins over position
     }
 
     @Test fun headsUpOnlyInLastMinutesBeforeChange() {

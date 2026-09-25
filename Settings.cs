@@ -21,6 +21,9 @@ public class Settings
     public bool ShowInTaskbar { get; set; } = true;
     public string? Hotkey { get; set; } = "Win+Shift+G";   // global hide/show; null or "" = none
     public double IdleOpacity { get; set; } = 0.5;
+    public string? Docked { get; set; }             // null, or "Left"/"Right": shrunk to a strip on that screen edge
+    public int DockCount { get; set; } = 2;         // events in the side strip (1-5)
+    public double DockOpacity { get; set; } = 0.75; // strip opacity when not hovered
     public int RefreshSeconds { get; set; } = 60;   // how often to check Google for changes
 
     // Look: a named theme, optionally overridden by custom hex colours

@@ -90,8 +90,12 @@ class Prefs(ctx: Context) {
     var headsUp: Int get() = sp.getInt("headsUp", 5); set(v) = sp.edit { putInt("headsUp", v) }
     var vibrate: Boolean get() = sp.getBoolean("vibrate", true); set(v) = sp.edit { putBoolean("vibrate", v) }
     var nextCount: Int get() = sp.getInt("nextCount", 1); set(v) = sp.edit { putInt("nextCount", v) }
-    /** "Compact": pill that expands on tap and tucks to the edge. "Full": the expanded card, always. */
+    /** "Compact": pill that expands on tap. "Full": the expanded card, always. */
     var view: String get() = sp.getString("view", "Compact")!!; set(v) = sp.edit { putString("view", v) }
+    /** Side strip: rows shown, opacity while untouched, and whether it's docked now (side = [right]). */
+    var dockCount: Int get() = sp.getInt("dockCount", 2); set(v) = sp.edit { putInt("dockCount", v) }
+    var dockOpacity: Int get() = sp.getInt("dockOpacity", 75); set(v) = sp.edit { putInt("dockOpacity", v) }
+    var docked: Boolean get() = sp.getBoolean("docked", false); set(v) = sp.edit { putBoolean("docked", v) }
     var onBoot: Boolean get() = sp.getBoolean("onBoot", false); set(v) = sp.edit { putBoolean("onBoot", v) }
     var y: Int get() = sp.getInt("y", -1); set(v) = sp.edit { putInt("y", v) }
     var right: Boolean get() = sp.getBoolean("right", true); set(v) = sp.edit { putBoolean("right", v) }

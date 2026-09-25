@@ -22,6 +22,9 @@ public partial class MainWindow
 
         m.Items.Add(Action(string.IsNullOrEmpty(s.Hotkey) ? "Hide" : $"Hide\t{s.Hotkey}", ToggleVisible));
         m.Items.Add(Choice("View", new[] { ("Compact: expand on hover", "Compact"), ("Full: always expanded", "Full") }, s.View, v => s.View = v));
+        m.Items.Add(s.Docked == null
+            ? Action("Move to the side", () => { var wa = Native.WorkArea(this, hwnd); DockTo(Left + ActualWidth / 2 < (wa.Left + wa.Right) / 2 ? "Left" : "Right"); })
+            : Action("Bring back from the side", Undock));
         m.Items.Add(Toggle("Pin on top", s.Pinned, v => s.Pinned = v));
         m.Items.Add(Toggle("Show in taskbar", s.ShowInTaskbar, v => s.ShowInTaskbar = v));
         var keys = new[] { "Win+Shift+G", "Win+Ctrl+G", "Ctrl+Alt+Shift+G", "Ctrl+Alt+K" }.Select(k => (k, k)).ToList();
@@ -57,11 +60,13 @@ public partial class MainWindow
         m.Items.Add(theme);
         m.Items.Add(Choice("Glass", new[] { ("Clear", "Clear"), ("Frosted", "Frosted"), ("Solid", "Solid") }, s.Glass, v => s.Glass = v));
         m.Items.Add(Choice("Opacity when idle", new[] { 0.25, 0.5, 0.75, 1.0 }.Select(o => ($"{o:P0}", o)), s.IdleOpacity, v => s.IdleOpacity = v));
+        m.Items.Add(Choice("Opacity at the side", new[] { 0.25, 0.5, 0.75, 1.0 }.Select(o => ($"{o:P0}", o)), s.DockOpacity, v => s.DockOpacity = v));
         m.Items.Add(Choice("Text size", new[] { 0.85, 1.0, 1.15, 1.3, 1.5 }.Select(o => ($"{o:P0}", o)), s.Scale, v => s.Scale = v));
         m.Items.Add(new Separator());
 
         m.Items.Add(Choice("All-day events", new[] { ("Chips, always visible", "Always"), ("Chips, on hover", "Hover"), ("In the list", "List") }, s.AllDay, v => s.AllDay = v));
         m.Items.Add(Choice("Up next", Enumerable.Range(1, 7).Select(n => ($"{n}", n)), s.NextCount, v => s.NextCount = v));
+        m.Items.Add(Choice("Events at the side", Enumerable.Range(1, 5).Select(n => ($"{n}", n)), s.DockCount, v => s.DockCount = v));
         m.Items.Add(Choice("Events when expanded", new[] { ("5", 5), ("10", 10), ("20", 20), ("All", 0) }, s.MaxEvents, v => s.MaxEvents = v));
         m.Items.Add(Choice("Look ahead", new[] { ("Today", 0), ("3 days", 3), ("1 week", 7), ("2 weeks", 14) }, s.DaysAhead, v =>
         {
@@ -84,6 +89,7 @@ public partial class MainWindow
         m.Items.Add(Action("Reset size and position", () =>
         {
             var d = new Settings();
+            if (s.Docked != null) { s.Docked = null; ApplyDock(); }
             Set(() => { s.Width = d.Width; s.ListHeight = d.ListHeight; s.Scale = d.Scale; s.Left = s.Top = null; });
             PlaceOnScreen();
         }));
