@@ -70,7 +70,7 @@ public class GoogleCal
                 ["code_challenge_method"] = "S256",
                 ["state"] = state,
                 ["access_type"] = "offline",
-                ["prompt"] = "consent",
+                ["prompt"] = "select_account consent",   // always show the account chooser, even if the browser is signed in to one account
             }.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 

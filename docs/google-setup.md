@@ -32,7 +32,7 @@ For desktop apps, Google doesn't treat the client secret as confidential, but ke
 
 ## 4. Sign in
 
-Start Glance. On first run it opens your browser at Google's sign-in page. Approve **read-only** calendar access and you're done. The browser redirects to a one-off local port (`http://127.0.0.1:<port>/`) that Glance listens on, and it uses PKCE.
+Start Glance. On first run it opens your browser at Google's account chooser, so you can pick any account, not just the one the browser is signed in to (useful on a work PC). Approve **read-only** calendar access and you're done. The browser redirects to a one-off local port (`http://127.0.0.1:<port>/`) that Glance listens on, and it uses PKCE.
 
 The resulting refresh token is saved as `token.dat` next to the exe, encrypted with Windows DPAPI. Only your Windows user can decrypt it. If you copy the folder to another PC, you'll need to sign in once more.
 
@@ -43,4 +43,5 @@ The resulting refresh token is saved as `token.dat` next to the exe, encrypted w
 | "Put client.json … next to Glance.exe" | The file is missing or isn't valid JSON |
 | `redirect_uri_mismatch` | The client is a *Web application*. Create a **Desktop app** client instead |
 | You're signed out every week | The consent screen is still in **Testing**. Publish it (step 2) |
+| Signed in with the wrong account | Right-click → **Sign out**, then **Sign in with Google…** and pick the right account. If it isn't listed, choose **Use another account** |
 | "Sign-in failed" after a long wait | You have 15 minutes to finish in the browser. Click the widget's sign-in line to try again |
