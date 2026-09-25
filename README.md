@@ -5,7 +5,7 @@
 <h1 align="center">Glance</h1>
 
 <p align="center">
-  A tiny floating Google Calendar widget for Windows 11.<br>
+  A tiny floating Google Calendar widget for Windows 11 and Android.<br>
   What you should be doing <b>now</b>, what's <b>next</b>, and the rest of your week on hover.
 </p>
 
@@ -41,6 +41,10 @@
 4. Run it. Your browser opens for sign-in, and after that the widget fills in.
 
 Want to try it without Google first? Run `Glance.exe --demo`.
+
+### Android
+
+Download **`Glance.apk`** from the same release. It floats over your apps as a small pill, tucks against the screen edge when you're not using it, and uses the calendars your phone already syncs, so there's no Google setup. See **[docs/android.md](docs/android.md)**.
 
 ## Using it
 

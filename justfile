@@ -21,3 +21,11 @@ demo: publish
     powershell.exe -NoProfile -Command "Get-Process Glance -ErrorAction SilentlyContinue | Where-Object Path -eq '$(wslpath -w "$dir/Glance.exe")' | Stop-Process; Start-Sleep 1"
     mkdir -p "$dir" && cp out/Glance.exe "$dir/"
     powershell.exe -NoProfile -Command "Start-Process '$(wslpath -w "$dir/Glance.exe")' -ArgumentList '--demo'"
+
+# Android: unit tests + signed release APK into android/dist/Glance.apk (see docs/android.md)
+android:
+    #!/usr/bin/env bash
+    set -e
+    export JAVA_HOME="${JAVA_HOME_17:-$(brew --prefix openjdk@17)/libexec}" ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+    cd android && ./gradlew :app:testDebugUnitTest :app:assembleRelease
+    mkdir -p dist && cp app/build/outputs/apk/release/app-release.apk dist/Glance.apk && ls -lh dist/Glance.apk
