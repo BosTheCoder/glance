@@ -1,6 +1,6 @@
 # Glance for Android
 
-A floating pill that sits on the edge of your screen over any app. It shows what's on **now** (with the time left) or when you're free until, and it stays where you put it until you throw it to the side, where it turns into a narrow strip that still shows what you're meant to be doing. Tap it to see the rest of the week, or set **View** to **Full** to keep that card open all the time.
+A floating pill that floats over any app, wherever you put it. It shows what's on **now** (with the time left) or when you're free until, and it stays where you put it until you throw it to the side, where it turns into a narrow strip that still shows what you're meant to be doing. Tap it to see the rest of the week, or set **View** to **Full** to keep that card open all the time.
 
 It reads the calendars your phone already syncs from your Google account, so there's no Google sign-in and no OAuth client to set up.
 
@@ -26,14 +26,16 @@ In the default Compact view:
 | --- | --- |
 | Tap the pill | Expand it: clock, all-day chips (they wrap onto as many lines as they need, so you never scroll sideways), the current event, what's next and a scrollable agenda |
 | Tap the clock, or anywhere outside | Collapse it again |
+| Drag the open card by its clock row (or its edges) | Move it. The list still scrolls. When it collapses, the pill lands where you left the card |
 | Drag the grip in the card's bottom corner (the one away from the screen edge) | Resize the card: inwards makes it wider, down gives the agenda more height. It remembers the size |
 | Pinch the pill | Resize it: spread your fingers sideways to set the pill's width (every line fills it, and long titles are cut short inside it), up and down to show more or fewer Up next rows (1 to 7). It remembers both; **Reset size** puts it back to fitting its text |
 | Tap an event in the card (the current event or an agenda row) | Open that event in your calendar app. Only the open card does this, so a tap on the pill can't open one by accident: tapping the pill expands it |
-| Drag the pill | Move it. It snaps to the nearest left or right edge and remembers where it was |
-| Throw it towards an edge, or drag it mostly off one | Dock it there as the side strip (below) |
-| Leave it for 3 seconds | It fades to the idle opacity. It never moves on its own |
+| Drag the pill | Move it. It stays exactly where you let go (kept on screen) and remembers the spot |
+| Throw it towards an edge, or drag it mostly off one | Dock it there as the side strip (below). Only a real flick or a push mostly off the edge docks it; a slow drag never does |
+| Leave it for a few seconds (**Fade after**) | It fades to the idle opacity. It never moves on its own |
 | Tap the side strip | Bring the pill back out, on the same side and at the same height |
-| Long-press the pill or strip | Open the settings screen |
+| Long-press anywhere on the pill, card or strip | Open the settings screen, with a short buzz so you know it took. Anywhere means anywhere: an event row or the list works too (the tap underneath is cancelled). Not on a travel time, which has its own long-press |
+| Long-press a travel time | Show the ride you can't run for: "DLR 16:40 from Bank DLR Station, towards Woolwich Arsenal · arrive 17:16 · 36m" |
 | Tap an alert banner | Dismiss it |
 
 Settings (same names as the Windows app):
@@ -44,7 +46,9 @@ Settings (same names as the Windows app):
 | **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now (pinching the pill up and down changes it too). The expanded card lists the same number under NEXT. Every upcoming timed event, here and in the agenda, shows how long it lasts ("30m", "1h 15m") at the end of its row |
 | **Items at the side** | 1 to 5 (default 2): rows in the side strip |
 | **Opacity at the side** | 25/50/75/100% (default 75%): the strip's opacity while you're not touching it |
-| Idle opacity | 25/50/75/100%: the pill's or card's opacity after 3 seconds untouched |
+| **Opacity when active** | 50/75/90/100% (default 100%, solid): the glass behind the pill, card and strip while you use it |
+| Idle opacity | 25/50/75/100%: the pill's or card's opacity once it fades |
+| **Fade after** | 3/5/10/30 s (default 5 s): how long untouched before it fades to the idle opacity |
 | Heads-up before a change | 2/5/10 minutes |
 | Vibrate on reminders and heads-ups | On/off. Starts use the pop-up's own vibration instead |
 | **Pop-up when events start** (button) | Android's settings for the pop-up: sound, vibration, on/off |
@@ -56,7 +60,7 @@ Settings (same names as the Windows app):
 
 ### Full view
 
-The card stays open: clock, all-day chips, what's on now, up next and the agenda. Resize it with the grip in its bottom corner, as in Compact. Drag it by the clock row to move it; it snaps to the nearer left or right edge like the pill does. After 3 seconds without a touch it fades to the idle opacity, but it doesn't collapse, and tapping outside it does nothing. Throw it at an edge to dock it, as with the pill. Touch it anywhere to bring it back to full opacity. Alerts work the same way: the banner shows at the top of the card and the card's outline changes colour. Long-press the clock row for settings.
+The card stays open: clock, all-day chips, what's on now, up next and the agenda. Resize it with the grip in its bottom corner, as in Compact. Drag it by the clock row to move it; it stays where you let go, like the pill. After **Fade after** without a touch it fades to the idle opacity, but it doesn't collapse, and tapping outside it does nothing. Throw it at an edge to dock it, as with the pill. Touch it anywhere to bring it back to full opacity. Alerts work the same way: the banner shows at the top of the card and the card's outline changes colour. Long-press anywhere on it for settings.
 
 ### Side strip
 
@@ -87,8 +91,8 @@ Each alert fires once. After a restart it only fires alerts that were due in the
 
 Any timed event whose title starts with "Travel" gets the next public transport options from TfL. The rules for where a trip starts and ends are the same as on Windows, in [docs/travel.md](travel.md).
 
-- **In the pill and on agenda rows**, a travel event shows "🚆 leave 16:44" where other rows show their length. It turns amber once leaving is within the heads-up time.
-- **In the open card**, a row of times sits under each travel event: "16:44 → 17:25". The one to catch is outlined, and ones that arrive after the event ends are dimmed. Tap a time to open the trip in Citymapper (the app if it's installed), set to arrive by the end of the event. **Later** adds three more. Without TfL times (outside London, or an address with no postcode) there's a **Directions** chip for Google Maps instead.
+- **In the pill and on agenda rows**, a travel event shows "🚆 leave 16:44" where other rows show their length. It turns amber once leaving is within the heads-up time, and says "go now" once it has passed.
+- **In the open card**, a row of times sits under each travel event: "16:44 → 17:25". The one to catch is outlined, and ones that arrive after the event ends are dimmed. One whose leave time has passed but whose train hasn't gone shows the train instead, in amber: "🏃 DLR 16:49 → 17:25". **Hold a time** to see its first ride: line, time, stop and direction. Tap a time to open the trip in Citymapper (the app if it's installed), set to arrive by the end of the event. **Later** adds three more. Without TfL times (outside London, or an address with no postcode) there's a **Directions** chip for Google Maps instead.
 - **Your location** is used for a trip that starts within 90 minutes, if you've granted it. It's one fix at a time from Android's own location service (fused on Android 12+, else network, else GPS), rounded to about 100 m, and only sent to TfL. Without it, or without a fix, the start comes from your calendar.
 
 ## How it gets your calendar
@@ -141,7 +145,7 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 | --- | --- |
 | `main/.../Model.kt` | Pure Kotlin, no Android: the `Ev` model, now/next, the side strip's rows, heads-up and its banner wording (`Plan`), where a release docks (`dockSide`), which alerts are due (`AlertTracker`), `isNewer()` for release tags, `dur()` |
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
-| `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/snap/throw-to-dock, alerts |
+| `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/throw-to-dock, alerts |
 | `main/.../MainActivity.kt` | Setup screen (edge to edge): permissions, calendar picker, settings, Start/Stop |
 | `main/.../Update.kt` | Check for updates: the GitHub releases API, the SHA-256 check and the `PackageInstaller` session |
 | `main/.../BootReceiver.kt` | Restarts the service after a reboot if "start on boot" is on |

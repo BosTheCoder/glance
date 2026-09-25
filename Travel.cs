@@ -7,7 +7,10 @@ using System.Text.RegularExpressions;
 namespace Glance;
 
 /// One way to get there. Depart is when to walk out of the door (TfL counts the walk to the stop).
-public record Journey(DateTime Depart, DateTime Arrive, string Via);
+/// First: the first bus or train, the part you can't make up by running. Null for a walk.
+public record Journey(DateTime Depart, DateTime Arrive, string Via, Ride? First = null);
+
+public record Ride(DateTime At, string Line, string Stop, string? Towards);
 
 /// Travel events ("Travel: to Office") and their public transport times. Rules in docs/travel.md; UI-free so the tests can run it.
 public static class Travel
@@ -67,6 +70,9 @@ public static class Travel
         return Postcode.Matches(place).LastOrDefault() is { } m ? (m.Groups[1].Value + m.Groups[2].Value).ToUpperInvariant() : null;
     }
 
+    /// Still worth showing: its first bus or train hasn't gone. You can run the walk, not the ride.
+    public static bool Catchable(Journey j, DateTime now) => (j.First?.At ?? j.Depart) >= now;
+
     /// The one to catch: the last that still arrives by [by].
     public static Journey? Catch(IEnumerable<Journey> options, DateTime by) => options.Where(j => j.Arrive <= by).MaxBy(j => j.Depart);
 
@@ -91,7 +97,10 @@ public static class Travel
         {
             var legs = x!["legs"]!.AsArray();
             var via = string.Join(" → ", legs.Where(l => (string?)l!["mode"]?["id"] != "walking").Select(l => Line(l!)));
-            list.Add(new(T(x["startDateTime"]), T(x["arrivalDateTime"]), via == "" ? "Walk" : via));
+            var ride = legs.FirstOrDefault(l => (string?)l!["mode"]?["id"] != "walking");
+            var first = ride == null ? null : new Ride(T(ride["departureTime"] ?? x["startDateTime"]), Line(ride), (string?)ride["departurePoint"]?["commonName"] ?? "",
+                (string?)ride["routeOptions"]?[0]?["directions"]?[0] is { Length: > 0 } d ? d : null);
+            list.Add(new(T(x["startDateTime"]), T(x["arrivalDateTime"]), via == "" ? "Walk" : via, first));
             start ??= Point(legs[0]!["departurePoint"]);
             end ??= Point(legs[^1]!["arrivalPoint"]);
         }

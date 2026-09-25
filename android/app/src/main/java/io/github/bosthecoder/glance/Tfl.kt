@@ -32,29 +32,40 @@ object Tfl {
             val code = c.responseCode
             if (code == 429 || code >= 500) throw IOException("TfL answered $code")
             if (code != 200) return null   // 300 = it couldn't place an end, 404 = no journey
-            val j = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
-            val arr = j.optJSONArray("journeys") ?: return null
-            var start: DoubleArray? = null; var end: DoubleArray? = null
-            val out = (0 until arr.length()).map { i ->
-                val jr = arr.getJSONObject(i)
-                val legs = jr.getJSONArray("legs")
-                fun point(o: JSONObject?) = o?.takeIf { it.has("lat") }?.let { doubleArrayOf(it.getDouble("lat"), it.getDouble("lon")) }
-                if (legs.length() > 0) {
-                    start = start ?: point(legs.getJSONObject(0).optJSONObject("departurePoint"))
-                    end = end ?: point(legs.getJSONObject(legs.length() - 1).optJSONObject("arrivalPoint"))
-                }
-                val via = (0 until legs.length()).map { legs.getJSONObject(it) }
-                    .filter { it.getJSONObject("mode").optString("id") != "walking" }
-                    .joinToString(" → ") { leg ->
-                        leg.optJSONArray("routeOptions")?.optJSONObject(0)?.optString("name")?.takeIf { it.isNotBlank() }
-                            ?: leg.getJSONObject("mode").optString("name")
-                    }
-                Journey(ms(jr.getString("startDateTime")), ms(jr.getString("arrivalDateTime")), via.ifEmpty { "walk" })
-            }
-            return Answer(out, start, end)
+            return parse(c.inputStream.bufferedReader().use { it.readText() })
         } finally {
             c.disconnect()
         }
+    }
+
+    /** A JourneyResults body: each journey's times, its lines, and its first ride (the first leg that isn't a walk). */
+    fun parse(body: String): Answer? {
+        val arr = JSONObject(body).optJSONArray("journeys") ?: return null
+        var start: DoubleArray? = null; var end: DoubleArray? = null
+        fun point(o: JSONObject?) = o?.takeIf { it.has("lat") }?.let { doubleArrayOf(it.getDouble("lat"), it.getDouble("lon")) }
+        /** "DLR", "25 bus", "Central line": the route's name, else the mode's. */
+        fun line(leg: JSONObject): String {
+            val mode = leg.getJSONObject("mode")
+            val name = leg.optJSONArray("routeOptions")?.optJSONObject(0)?.optString("name")?.takeIf { it.isNotBlank() }
+                ?: return mode.optString("name")
+            return when (mode.optString("id")) { "bus" -> "$name bus"; "tube" -> "$name line"; else -> name }
+        }
+        val out = (0 until arr.length()).map { i ->
+            val jr = arr.getJSONObject(i)
+            val legs = jr.getJSONArray("legs").let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+            if (legs.isNotEmpty()) {
+                start = start ?: point(legs.first().optJSONObject("departurePoint"))
+                end = end ?: point(legs.last().optJSONObject("arrivalPoint"))
+            }
+            val rides = legs.filter { it.getJSONObject("mode").optString("id") != "walking" }
+            val first = rides.firstOrNull()?.let { l ->
+                Ride(l.optString("departureTime").takeIf { it.isNotEmpty() }?.let(::ms) ?: ms(jr.getString("startDateTime")), line(l),
+                    l.optJSONObject("departurePoint")?.optString("commonName").orEmpty(),
+                    l.optJSONArray("routeOptions")?.optJSONObject(0)?.optJSONArray("directions")?.optString(0)?.takeIf { it.isNotBlank() })
+            }
+            Journey(ms(jr.getString("startDateTime")), ms(jr.getString("arrivalDateTime")), rides.joinToString(" → ", transform = ::line).ifEmpty { "walk" }, first)
+        }
+        return Answer(out, start, end)
     }
 
     private fun ms(s: String) = LocalDateTime.parse(s).atZone(LONDON).toInstant().toEpochMilli()

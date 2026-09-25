@@ -67,7 +67,7 @@ object Plan {
 enum class Side { LEFT, RIGHT }
 
 /**
- * Where a released drag docks, or null to just snap to the nearer edge as usual. A throw faster than
+ * Where a released drag docks, or null to stay where it was dropped. A throw faster than
  * [flingV] (px/s) docks on the side it was thrown towards; otherwise more than 40% of the view past a
  * screen edge docks on that edge. [left] is the view's left in screen pixels, so it goes negative off the left.
  */

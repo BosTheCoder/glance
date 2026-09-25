@@ -282,11 +282,13 @@ public partial class MainWindow : Window
         {
             var buffer = TimeSpan.FromMinutes(s.TravelBuffer);
             var (list, a, b) = await Travel.Fetch(from, to, trip.By, arriving: true);
-            list = list.Where(j => j.Depart - buffer >= now).ToList();
-            if (list.Count < 3)   // running late, or TfL gave few: the next ones from now
+            list = list.Where(j => Travel.Catchable(j, now)).ToList();
+            // Running late, or TfL gave few: ones you'd have to hurry for (set off up to 10 min ago), then the next from now.
+            foreach (var at in new[] { now.AddMinutes(-10), now + buffer })
             {
-                var (more, a2, b2) = await Travel.Fetch(from, to, now + buffer, arriving: false);
-                (list, a, b) = (Travel.Merge(list, more), a ?? a2, b ?? b2);
+                if (list.Count >= 3) break;
+                var (more, a2, b2) = await Travel.Fetch(from, to, at, arriving: false);
+                (list, a, b) = (Travel.Merge(list, more.Where(j => Travel.Catchable(j, now))), a ?? a2, b ?? b2);
             }
             var link = list.Count > 0 && b != null ? Travel.Citymapper(a, b, trip.To, trip.By) : Travel.GoogleMaps(trip.From, trip.To);
             return trip with { Options = list, Link = link, Fetched = now, Failed = false };
@@ -506,7 +508,7 @@ public partial class MainWindow : Window
             {
                 len.Text = null;
                 len.Inlines.Add(new System.Windows.Documents.Run("\uE7C0  ") { FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets") });   // Train
-                len.Inlines.Add(new System.Windows.Documents.Run($"leave {Time(leave)}"));
+                len.Inlines.Add(new System.Windows.Documents.Run(leave < DateTime.Now ? "go now" : $"leave {Time(leave)}"));
                 if (leave - DateTime.Now <= TimeSpan.FromMinutes(s.HeadsUpMinutes)) { len.Foreground = new SolidColorBrush(Amber); len.Opacity = 1; }
             }
             DockPanel.SetDock(len, Dock.Right);
@@ -538,7 +540,7 @@ public partial class MainWindow : Window
 
     // ---------- travel ----------
 
-    List<Journey> Upcoming(Trip trip, DateTime now) => trip.Options.Where(j => j.Depart.AddMinutes(-s.TravelBuffer) >= now.AddMinutes(-1)).ToList();
+    List<Journey> Upcoming(Trip trip, DateTime now) => trip.Options.Where(j => Travel.Catchable(j, now)).ToList();
 
     /// When to leave: for the one to catch, else (running late) the next one. Null without times.
     DateTime? LeaveAt(Ev e, DateTime now) =>
@@ -555,8 +557,11 @@ public partial class MainWindow : Window
         foreach (var j in opts)
         {
             var leave = j.Depart.AddMinutes(-s.TravelBuffer);
-            var c = TimeChip($"{Time(leave)} → {Time(j.Arrive)}", trip.Link);
-            c.ToolTip = $"Leave {Time(leave)}{(s.TravelBuffer > 0 ? $" ({s.TravelBuffer} min to get ready, out the door {Time(j.Depart)})" : "")}\n" +
+            var hurry = leave < now;   // you'd have to skip getting ready or run, so say which ride it is
+            var c = TimeChip(hurry && j.First is { } f ? $"🏃 {f.Line} {Time(f.At)} → {Time(j.Arrive)}" : $"{Time(leave)} → {Time(j.Arrive)}", trip.Link);
+            if (hurry) ((TextBlock)c.Child).Foreground = new SolidColorBrush(Amber);
+            var ride = j.First is { } r ? $"Catch the {r.Line} at {Time(r.At)} from {r.Stop}{(r.Towards is { } t ? $", towards {t}" : "")}" : "Walk, no ride to catch";
+            c.ToolTip = $"{ride}\nLeave {Time(leave)}{(s.TravelBuffer > 0 ? $" ({s.TravelBuffer} min to get ready, out the door {Time(j.Depart)})" : "")}\n" +
                         $"{j.Via}  ·  {Dur(j.Arrive - j.Depart)}\nArrive {Time(j.Arrive)}{(j.Arrive > trip.By ? $", {Dur(j.Arrive - trip.By)} late" : "")}\nClick to open in {app}";
             if (j == best) c.BorderBrush = new SolidColorBrush(Green);
             if (j.Arrive > trip.By) c.Opacity = 0.5;
@@ -636,7 +641,7 @@ public partial class MainWindow : Window
             sp.Children.Add(new TextBlock { Text = e.Title, FontSize = on ? 13 : 12, FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis });
             var until = e.Start - now;
             var sub = on ? $"{Dur(e.End - now)} left" : $"{(until.TotalHours < 12 ? $"in {Dur(until)}" : $"{e.Start:ddd} {Time(e.Start)}")}  ·  {Dur(e.End - e.Start)}";
-            if (LeaveAt(e, now) is DateTime leave) sub = $"leave {Time(leave)}  ·  {sub}";
+            if (LeaveAt(e, now) is DateTime leave) sub = $"{(leave < now ? "go now" : $"leave {Time(leave)}")}  ·  {sub}";
             sp.Children.Add(Text(sub, 11, 0.65, new(0)));
             if (on) sp.Children.Add(Bar(e, (now - e.Start) / (e.End - e.Start), headsUp && e.End == change));
             else if (coming is { Starts: true } h && h.Event == e) { var line = (TextBlock)sp.Children[1]; line.Foreground = new SolidColorBrush(Amber); line.Opacity = 1; }

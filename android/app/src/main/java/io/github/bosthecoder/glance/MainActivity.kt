@@ -173,7 +173,9 @@ class MainActivity : ComponentActivity() {
         choice("Up next", (1..7).toList(), { "$it" }, prefs.nextCount) { prefs.nextCount = it }
         choice("Items at the side", (1..5).toList(), { "$it" }, prefs.dockCount) { prefs.dockCount = it }
         choice("Opacity at the side", listOf(25, 50, 75, 100), { "$it%" }, prefs.dockOpacity) { prefs.dockOpacity = it }
+        choice("Opacity when active", listOf(50, 75, 90, 100), { "$it%" }, prefs.activeOpacity) { prefs.activeOpacity = it }
         choice("Idle opacity", listOf(25, 50, 75, 100), { "$it%" }, prefs.idleOpacity) { prefs.idleOpacity = it }
+        choice("Fade after", listOf(3, 5, 10, 30), { "$it s" }, prefs.fadeAfter) { prefs.fadeAfter = it }
         choice("Heads-up before a change", listOf(2, 5, 10), { "$it min" }, prefs.headsUp) { prefs.headsUp = it }
         toggle("Vibrate on reminders and heads-ups", prefs.vibrate) { prefs.vibrate = it }
         list.addView(button("Pop-up when events start: sound and vibration", 0xFF1A1A1E.toInt()) {
@@ -203,8 +205,8 @@ class MainActivity : ComponentActivity() {
             }
             list.postDelayed({ build() }, 300)
         })
-        list.addView(text("Tap the pill to expand it (Full view: drag the card by its clock). Pinch the pill to resize it: sideways for width, up and down for Up next rows. Throw it at an edge to dock it as a side strip, tap the strip to bring it back. Long-press for this screen.", 12f, 0x80FFFFFF.toInt()).apply {
-            maxLines = 6; setPadding(0, dp(10), 0, 0)
+        list.addView(text("Tap the pill to expand it; drag the open card by its clock. It stays wherever you drop it. Pinch the pill to resize it: sideways for width, up and down for Up next rows. Flick it at an edge to dock it as a side strip, tap the strip to bring it back. Long-press anywhere for this screen; hold a travel time for its train.", 12f, 0x80FFFFFF.toInt()).apply {
+            maxLines = 8; setPadding(0, dp(10), 0, 0)
         })
     }
 

@@ -8,7 +8,8 @@ next public transport options, from TfL's Journey Planner, for getting there by 
 - **Focused** (expanded on Windows, the open card on Android): a row of times sits under it, "16:44 → 17:25".
   - The one to catch (the last that still gets you there on time) is outlined.
   - Later ones, which arrive after the event ends, are dimmed.
-  - Hover a time (Windows) for the lines and the length. **Later** fetches three more.
+  - Hover a time (Windows) or hold it (Android) for the first ride, the one you can't run for: "DLR 16:40 from Bank
+    DLR Station, towards Woolwich Arsenal", plus the lines and the length. **Later** fetches three more.
 - **Click or tap a time** to open the trip in Citymapper, set to arrive by the end of the event. Where TfL has no
   times (outside London, or no postcode), there's a **Directions** link to Google Maps instead, which works anywhere.
 
@@ -38,8 +39,13 @@ other one learns it. On Windows you can also name places in settings.json (`Plac
 
 - **Leave time** = departure minus your get-ready **buffer** (one setting for all trips, 5 min by default). The
   departure already includes the walk to the stop.
-- The first options come from asking TfL for journeys **arriving by** the end of the trip, not counting any that
-  leave before now. If that gives fewer than three, Glance asks for the next ones leaving from now.
+- **An option stays while its train hasn't gone.** The walk to the stop can be run, a departure can't, so an option
+  is kept until its first ride leaves (a walk-only one, until its start), even once its leave time has passed. Such
+  a "hurry" option shows the ride instead of the leave time, in amber: "🏃 DLR 19:57 → 20:33". The glance label
+  says **go now** once the chosen option's leave time has passed.
+- The first options come from asking TfL for journeys **arriving by** the end of the trip. If fewer than three of
+  them can still be caught, Glance asks for ones leaving from 10 minutes ago (a train you could still run for), then
+  if still short, ones leaving once you're ready (now plus the buffer). They're merged, without duplicates, earliest first.
 - Times refresh every 5 minutes when the trip starts within 2 hours, and hourly before that. Only trips that
   start within the next 12 hours are looked up.
 

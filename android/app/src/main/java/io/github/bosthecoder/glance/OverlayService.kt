@@ -38,6 +38,7 @@ import android.text.TextUtils
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.VelocityTracker
@@ -209,9 +210,11 @@ class OverlayService : Service() {
     private var expanded = false
     private var full = false        // View = Full: the card is always shown, never collapsed
     private var docked = false      // shrunk to the side strip on the [right] edge
-    private var faded = false       // untouched for 3 s: at the idle (or side) opacity
+    private var faded = false       // untouched for [Prefs.fadeAfter] s: at the idle (or side) opacity
     private var right = true
+    private var pillX = 0
     private var pillY = 0
+    private var cardMoved = false   // the open card was dragged: the pill lands where it was left
     private val xSpring by lazy {
         SpringAnimation(FloatValueHolder()).apply {
             spring = SpringForce()
@@ -257,7 +260,8 @@ class OverlayService : Service() {
     }
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
-            "y", "right", "docked" -> {}
+            "x", "y", "right", "docked", "fadeAfter" -> {}
+            "activeOpacity" -> showForm()
             "cardWidth", "listHeight" -> if (!gripping) { scroll.maxH = listH(); showForm(); update() }
             "view" -> applyMode()
             "idleOpacity", "dockOpacity" -> if (faded) { faded = false; fade() }
@@ -278,6 +282,8 @@ class OverlayService : Service() {
 
     /** lp.y counts from below the status bar (overlays fit the system bars by default), so the room is H minus both bars. */
     private fun clampY(y: Int, height: Int): Int { val e = edges(); return y.coerceIn(0, maxOf(0, H - e.top - e.bottom - height)) }
+    /** x is measured in from the [right] (or left) edge. */
+    private fun clampX(x: Int, width: Int) = x.coerceIn(0, maxOf(0, W - width))
 
     override fun onBind(intent: Intent?) = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -323,6 +329,7 @@ class OverlayService : Service() {
         scroll.maxH = listH()
         showForm()
         lp.y = clampY(lp.y, root.height)
+        lp.x = clampX(lp.x, root.width)
         update()
     }
 
@@ -393,8 +400,8 @@ class OverlayService : Service() {
         }
 
         clock = text("", 13f, 0x99FFFFFF.toInt()).apply {
-            setPadding(0, 0, 0, dp(8)); setOnClickListener { collapse() }
-            setOnTouchListener { _, e -> full && onTouch(e) }   // Full view: the clock is the drag handle
+            setPadding(0, 0, 0, dp(8)); setOnClickListener { collapse() }   // accessibility; touch goes through onTouch
+            setOnTouchListener { _, e -> onTouch(e) }   // the card's drag handle, with the banner and the card's edges
         }
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll = MaxScroll(this, listH()).apply { isVerticalScrollBarEnabled = false; addView(body) }
@@ -406,14 +413,34 @@ class OverlayService : Service() {
 
         dockBg = GradientDrawable().apply { setColor(GLASS); setStroke(dp(1), RIM) }
         dock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = dockBg; visibility = View.GONE }
-        grip = Grip(this).apply { visibility = View.GONE; setOnTouchListener { _, e -> resize(e) } }
+        grip = Grip(this).apply { visibility = View.GONE; setOnTouchListener { _, e -> h.removeCallbacks(longR); resize(e) } }
 
         root = object : FrameLayout(this) {
-            // Full view: any touch, even one the agenda scroll takes, wakes the card and restarts the idle timer.
+            private var cancelled = false
             override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+                // Full view: any touch, even one the agenda scroll takes, wakes the card and restarts the idle timer.
                 if (full && !docked) when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> { h.removeCallbacks(fadeR); if (faded) wake() }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleFade()
+                }
+                // Long-press for settings, watched here so it works wherever the finger lands, even on a row or the
+                // list, which take the touch before the window's own listener sees it. Views with their own
+                // long-press (time chips, the grip) cancel it; moving past touch slop (a drag or a scroll) does too.
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        longFired = false; cancelled = false; pressX = e.rawX; pressY = e.rawY
+                        h.removeCallbacks(longR); h.postDelayed(longR, ViewConfiguration.getLongPressTimeout().toLong())
+                    }
+                    MotionEvent.ACTION_MOVE -> if (hypot(e.rawX - pressX, e.rawY - pressY) > slop) h.removeCallbacks(longR)
+                    MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> h.removeCallbacks(longR)
+                }
+                if (longFired && e.actionMasked != MotionEvent.ACTION_OUTSIDE) {   // settings are opening: the row, chip or tap under the finger mustn't fire as well
+                    if (!cancelled) {
+                        cancelled = true
+                        val c = MotionEvent.obtain(e).apply { action = MotionEvent.ACTION_CANCEL }
+                        super.dispatchTouchEvent(c); c.recycle()
+                    }
+                    return true
                 }
                 return super.dispatchTouchEvent(e)
             }
@@ -429,7 +456,7 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = side(); x = 0; y = prefs.y.takeIf { it >= 0 } ?: (H / 4) }
+        ).apply { gravity = side(); x = prefs.x; y = prefs.y.takeIf { it >= 0 } ?: (H / 4) }
     }
 
     private fun side() = Gravity.TOP or if (right) Gravity.RIGHT else Gravity.LEFT
@@ -455,6 +482,8 @@ class OverlayService : Service() {
 
     /** Show the pill, the card or the side strip. The alert banner lives in the pill or card, whichever is up. */
     private fun showForm() {
+        val glass = (prefs.activeOpacity * 255 / 100 shl 24) or (GLASS and 0xFFFFFF)   // 100% = solid
+        pillBg.setColor(glass); cardBg.setColor(glass); dockBg.setColor(glass)
         val form = when { docked -> dock; full || expanded -> card; else -> pill }
         (bannerRow.parent as? ViewGroup)?.removeView(bannerRow)
         if (form === card) card.addView(bannerRow, 0) else pill.addView(bannerRow, 0)
@@ -477,7 +506,7 @@ class OverlayService : Service() {
         xSpring.cancel(); yFling.cancel(); h.removeCallbacks(fadeR)
         showForm()
         scroll.scrollTo(0, 0)
-        lp.gravity = side(); lp.x = 0
+        lp.gravity = side(); lp.x = clampX(prefs.x, if (lp.width > 0) lp.width else root.width)
         root.alpha = 1f
         update(); render(); scheduleFade()
     }
@@ -601,9 +630,13 @@ class OverlayService : Service() {
             val r = runCatching {
                 if (after != null) Tfl.journeys(fc, tc, after, arriving = false)
                     ?.let { Tfl.Answer((old?.journeys.orEmpty() + it.journeys), old?.start ?: it.start, old?.end ?: it.end) } ?: old
-                else Tfl.journeys(fc, tc, t.ev.end, arriving = true)?.let { a ->
-                    if (Travel.options(a.journeys, now, buffer).size >= 3) a
-                    else Tfl.journeys(fc, tc, now + buffer * MIN, arriving = false)?.let { Tfl.Answer(a.journeys + it.journeys, a.start, a.end) } ?: a
+                // Arriving by the end; if fewer than 3 are still catchable, the ones that left up to 10 min ago (a train
+                // you could still run for), then the ones leaving once you're ready.
+                else Tfl.journeys(fc, tc, t.ev.end, arriving = true)?.let { a0 ->
+                    listOf(now - 10 * MIN, now + buffer * MIN).fold(a0) { a, from ->
+                        if (Travel.options(a.journeys, now).size >= 3) a
+                        else Tfl.journeys(fc, tc, from, arriving = false)?.let { Tfl.Answer(a.journeys + it.journeys, a.start ?: it.start, a.end ?: it.end) } ?: a
+                    }
                 }
             }
             h.post {
@@ -642,15 +675,15 @@ class OverlayService : Service() {
     /** The leave time a travel row shows at a glance: for the one to catch, else the next one. Null without times. */
     private fun leave(e: Ev, now: Long): Long? {
         val t = trip(e, now) ?: return null
-        val opts = Travel.options(times[t.key]?.answer?.journeys.orEmpty(), now, prefs.travelBuffer)
+        val opts = Travel.options(times[t.key]?.answer?.journeys.orEmpty(), now)
         val j = Travel.catch(opts, e.end) ?: opts.firstOrNull() ?: return null
         return j.depart - prefs.travelBuffer * MIN
     }
 
-    /** "🚆 leave 16:44" in place of a travel row's length; amber once leaving is within the heads-up time. */
+    /** "🚆 leave 16:44" in place of a travel row's length; amber once leaving is within the heads-up time, "go now" once it's passed. */
     private fun leaveText(e: Ev, now: Long): TextView? = leave(e, now)?.let { l ->
         val color = if (l - now <= prefs.headsUp * MIN) AMBER else 0x80FFFFFF.toInt()
-        ui.text("leave ${hm(l)}", 12f, color).apply {
+        ui.text(if (l < now) "go now" else "leave ${hm(l)}", 12f, color).apply {
             setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_train, 0, 0, 0)
             compoundDrawablePadding = dp(3); compoundDrawableTintList = ColorStateList.valueOf(color)
             layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) }
@@ -665,7 +698,7 @@ class OverlayService : Service() {
         val t = trip(e, now) ?: return null
         val st = times[t.key]
         val buffer = prefs.travelBuffer
-        val opts = Travel.options(st?.answer?.journeys.orEmpty(), now, buffer)
+        val opts = Travel.options(st?.answer?.journeys.orEmpty(), now)
         val noTimes = t.fc == null || t.tc == null || (st != null && st.fetched > 0 && !st.busy && st.answer?.journeys.isNullOrEmpty())
         if (opts.isEmpty() && !noTimes) return null   // still looking
         val box = WrapLayout(ui, dp(5), dp(5)).apply { setPadding(dp(16), dp(2), 0, dp(6)) }
@@ -674,7 +707,18 @@ class OverlayService : Service() {
         val start = a.start; val end = a.end
         val link = if (start != null && end != null) Travel.citymapper(start, end, t.to, e.end, ZoneId.systemDefault()) else Travel.googleMaps(t.from, t.to)
         val c = Travel.catch(opts, e.end)
-        for (j in opts) box.addView(timeChip("${hm(j.depart - buffer * MIN)} → ${hm(j.arrive)}", outline = j == c, dim = j.arrive > e.end) { openUrl(link) })
+        for (j in opts) {
+            // Past its leave time but the ride hasn't gone: say which train to run for, in amber.
+            val hurry = j.depart - buffer * MIN < now
+            val label = if (!hurry) "${hm(j.depart - buffer * MIN)} → ${hm(j.arrive)}"
+                else "🏃 ${j.first?.let { "${it.line} ${hm(it.at)}" } ?: "walk"} → ${hm(j.arrive)}"
+            box.addView(timeChip(label, outline = j == c, dim = j.arrive > e.end) { openUrl(link) }.apply {
+            if (hurry) setTextColor(AMBER)
+            // Hold for the ride you can't run for: the platform tooltip, which shows on long-press and stays while held.
+            tooltipText = Travel.rideText(j, ::hm)
+            setOnTouchListener { _, ev -> if (ev.actionMasked == MotionEvent.ACTION_DOWN) h.removeCallbacks(longR); false }   // not settings
+        })
+        }
         box.addView(timeChip("Later") { if (!st.busy) fetch(st, t, opts.last().depart + MIN) })
         return box
     }
@@ -914,7 +958,7 @@ class OverlayService : Service() {
         xSpring.animateToFinalPosition(target.toFloat())
     }
 
-    private fun scheduleFade() { h.removeCallbacks(fadeR); h.postDelayed(fadeR, 3000) }
+    private fun scheduleFade() { h.removeCallbacks(fadeR); h.postDelayed(fadeR, prefs.fadeAfter * 1000L) }
 
     /** Untouched: fade to the idle opacity, or the side opacity when docked. It never moves on its own. */
     private fun fade() {
@@ -953,12 +997,16 @@ class OverlayService : Service() {
         xSpring.cancel(); yFling.cancel()
         showForm(); lp.gravity = side()
         lp.x = if (spring) -dp(DOCK_W) else 0
+        prefs.x = 0   // it comes back out flush against that edge
         wake(); render(); update()
         if (spring) animX(0)
     }
 
-    /** Land on whichever edge is nearer. x is measured from that edge (gravity LEFT or RIGHT), so 0 = flush. */
-    private fun snap() {
+    /**
+     * Stay where it was dropped, kept on screen. x is re-measured from the nearer edge (gravity LEFT or RIGHT) without
+     * moving it, so the card opens inward and a throw docks to the side it's on.
+     */
+    private fun settle() {
         val w = root.width
         val left = if (right) W - lp.x - w else lp.x
         val toRight = left + w / 2 > W / 2
@@ -968,17 +1016,17 @@ class OverlayService : Service() {
             lp.x = if (right) W - left - w else left
             placeGrip()
         }
-        lp.y = clampY(lp.y, root.height)
-        animX(0)
-        prefs.y = lp.y; prefs.right = right
+        lp.x = clampX(lp.x, w); lp.y = clampY(lp.y, root.height)
+        update()
+        prefs.x = lp.x; prefs.y = lp.y; prefs.right = right
     }
 
     private fun expand() {
         expanded = true
         h.removeCallbacks(fadeR); xSpring.cancel()
-        pillY = lp.y
+        pillX = lp.x; pillY = lp.y; cardMoved = false
         showForm()
-        lp.gravity = side(); lp.x = 0   // on the pill's edge, so the grip has an inward side
+        lp.gravity = side(); lp.x = clampX(lp.x, lp.width)   // grows inward from the pill's side, kept on screen
         lp.y = minOf(lp.y, (H * 0.35f).toInt())
         root.alpha = 1f
         render(); update()
@@ -989,7 +1037,8 @@ class OverlayService : Service() {
         expanded = false
         showForm()
         scroll.scrollTo(0, 0)
-        lp.gravity = side(); lp.x = 0; lp.y = pillY
+        lp.gravity = side()
+        if (!cardMoved) { lp.x = pillX; lp.y = pillY }   // else the pill lands where the card was dragged to
         update(); render()
     }
 
@@ -1038,12 +1087,15 @@ class OverlayService : Service() {
     private var dragging = false
     private var touching = false
     private var longFired = false
+    private var pressX = 0f   // where the finger went down, for the long-press's slop (see root's dispatchTouchEvent)
+    private var pressY = 0f
     private var velocity: VelocityTracker? = null
     private var lastMove = 0L
     private val flingV by lazy { dp(DOCK_FLING).toFloat() }
 
     private val longR = Runnable {
         longFired = true
+        root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)   // so you know it took, and can let go
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -1054,7 +1106,7 @@ class OverlayService : Service() {
 
     // ---------- pinch (the pill) ----------
 
-    private var pinched = false          // this touch became a pinch: no drag, tap, throw or snap until every finger is up
+    private var pinched = false          // this touch became a pinch: no drag, tap or throw until every finger is up
     private var pinchW: Int? = null      // live values while pinching; saved to prefs when it ends
     private var pinchCount: Int? = null
     private var pinchStartW = 0
@@ -1089,25 +1141,23 @@ class OverlayService : Service() {
 
     private fun onTouch(e: MotionEvent): Boolean {
         if (e.actionMasked == MotionEvent.ACTION_OUTSIDE) { collapse(); return false }
-        if (expanded) return false
-        if (!docked && !full) pinch.onTouchEvent(e)
+        if (!docked && !full && !expanded) pinch.onTouchEvent(e)   // only the pill pinches
         if (pinched) {
             if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) {
                 pinched = false; touching = false
                 velocity?.recycle(); velocity = null
-                snap()                          // in case a drag moved it before the second finger landed
+                settle()                        // in case a drag moved it before the second finger landed
                 scheduleFade()
             }
             return true
         }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                touching = true; dragging = false; longFired = false; pinched = false
+                touching = true; dragging = false; pinched = false
                 downX = e.rawX; downY = e.rawY
                 velocity?.recycle(); velocity = VelocityTracker.obtain(); track(e)
                 h.removeCallbacks(fadeR)
                 if (faded) wake()
-                h.postDelayed(longR, ViewConfiguration.getLongPressTimeout().toLong())
             }
             MotionEvent.ACTION_MOVE -> {
                 track(e); lastMove = e.eventTime
@@ -1146,10 +1196,12 @@ class OverlayService : Service() {
                     dragging -> {
                         val w = root.width
                         val to = dockSide(if (right) W - lp.x - w else lp.x, w, W, vx, flingV)
-                        if (to != null) dock(to == Side.RIGHT, vx, vy) else snap()
+                        if (to != null) { expanded = false; dock(to == Side.RIGHT, vx, vy) }   // thrown, or pushed mostly off
+                        else { settle(); if (expanded) cardMoved = true }
                     }
                     !tap || longFired -> {}
                     docked -> { root.performClick(); undock(spring = true) }   // tap the strip: back out
+                    expanded -> { root.performClick(); collapse() }   // tap the open card's clock or edge: close it
                     banner != null -> { root.performClick(); banner = null; render() }   // tap dismisses the alert
                     else -> { root.performClick(); if (!full) expand() }
                 }

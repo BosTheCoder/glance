@@ -87,6 +87,9 @@ class Prefs(ctx: Context) {
         get() = sp.getStringSet("calendars", null)?.map { it.toLong() }?.toSet()
         set(v) = sp.edit { putStringSet("calendars", v?.map { it.toString() }?.toSet()) }
     var idleOpacity: Int get() = sp.getInt("idleOpacity", 50); set(v) = sp.edit { putInt("idleOpacity", v) }
+    /** Opacity of the glass while in use (100 = solid), and how long untouched before it fades to [idleOpacity]. */
+    var activeOpacity: Int get() = sp.getInt("activeOpacity", 100); set(v) = sp.edit { putInt("activeOpacity", v) }
+    var fadeAfter: Int get() = sp.getInt("fadeAfter", 5); set(v) = sp.edit { putInt("fadeAfter", v) }
     var headsUp: Int get() = sp.getInt("headsUp", 5); set(v) = sp.edit { putInt("headsUp", v) }
     var vibrate: Boolean get() = sp.getBoolean("vibrate", true); set(v) = sp.edit { putBoolean("vibrate", v) }
     /** Travel events: look up public transport times (docs/travel.md), leaving [travelBuffer] min to get ready. */
@@ -107,6 +110,8 @@ class Prefs(ctx: Context) {
     /** Card and pill sizes back to their defaults. Up next stays: it's content, not size. */
     fun resetSize() = sp.edit { remove("cardWidth"); remove("listHeight"); remove("pillWidth") }
     var onBoot: Boolean get() = sp.getBoolean("onBoot", false); set(v) = sp.edit { putBoolean("onBoot", v) }
+    /** Where it sits: [x] px in from the [right] (or left) edge, [y] px down; -1 = the defaults (flush, a quarter down). */
+    var x: Int get() = sp.getInt("x", 0); set(v) = sp.edit { putInt("x", v) }
     var y: Int get() = sp.getInt("y", -1); set(v) = sp.edit { putInt("y", v) }
     var right: Boolean get() = sp.getBoolean("right", true); set(v) = sp.edit { putBoolean("right", v) }
 

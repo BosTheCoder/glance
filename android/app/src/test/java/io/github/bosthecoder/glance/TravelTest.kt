@@ -56,9 +56,12 @@ class TravelTest {
 
     @Test fun theOneToCatch() {
         val now = at(29, 16, 40)
-        val js = listOf(16 to 49, 16 to 58, 17 to 7, 17 to 16, 16 to 43).map { (h, m) -> Journey(at(29, h, m), at(29, h, m) + 36 * MIN, "DLR") }
-        val opts = Travel.options(js, now, bufferMin = 5)      // 16:43 leaves at 16:38: gone
-        assertEquals(listOf(16 to 49, 16 to 58, 17 to 7, 17 to 16).map { (h, m) -> at(29, h, m) }, opts.map { it.depart })
+        // Each walks 9 min to the DLR. The 16:30 one's train left at 16:39: gone. The 16:34 one's leaves at 16:43: run for it.
+        val js = listOf(16 to 49, 16 to 58, 17 to 7, 17 to 16, 16 to 34, 16 to 30).map { (h, m) ->
+            Journey(at(29, h, m), at(29, h, m) + 36 * MIN, "DLR", Ride(at(29, h, m) + 9 * MIN, "DLR", "Bank", null))
+        }
+        val opts = Travel.options(js, now)
+        assertEquals(listOf(16 to 34, 16 to 49, 16 to 58, 17 to 7, 17 to 16).map { (h, m) -> at(29, h, m) }, opts.map { it.depart })
         assertEquals(at(29, 16, 58), Travel.catch(opts, at(29, 17, 40))?.depart)   // arrives 17:34; the 17:07 gets in at 17:43
         assertEquals(at(29, 17, 7), Travel.catch(opts, at(29, 17, 43))?.depart)    // exactly on time counts
         assertNull(Travel.catch(opts, at(29, 17, 0)))

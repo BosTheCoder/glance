@@ -7,8 +7,11 @@ import java.time.format.DateTimeFormatter
 
 // Pure Kotlin like Model.kt: the rules in docs/travel.md, so TravelTest runs on the plain JVM.
 
-/** One public transport option from TfL: [depart] already includes the walk to the stop. */
-data class Journey(val depart: Long, val arrive: Long, val via: String)
+/** One public transport option from TfL: [depart] already includes the walk to the stop. [first]: the ride you can't run for. */
+data class Journey(val depart: Long, val arrive: Long, val via: String, val first: Ride? = null)
+
+/** The first non-walking leg: when it leaves [stop], on [line], heading [towards]. You can run a walk, not a departure. */
+data class Ride(val at: Long, val line: String, val stop: String, val towards: String?)
 
 object Travel {
     /** A timed event whose title starts with "Travel": "Travel: to Office", "Travel Home". */
@@ -66,12 +69,22 @@ object Travel {
         return postcode.findAll(place).lastOrNull()?.let { (it.groupValues[1] + it.groupValues[2]).uppercase() }
     }
 
-    /** The options still worth showing: leave time (departure minus [bufferMin]) not yet passed, earliest first. */
-    fun options(journeys: List<Journey>, now: Long, bufferMin: Int) =
-        journeys.filter { it.depart - bufferMin * MIN >= now }.distinctBy { it.depart }.sortedBy { it.depart }
+    /**
+     * The options still worth showing, earliest first: any whose first ride hasn't left yet (for a walk-only one, its
+     * start). An option whose leave time has passed stays while you could still run for the train.
+     */
+    fun options(journeys: List<Journey>, now: Long) =
+        journeys.filter { (it.first?.at ?: it.depart) >= now }.distinctBy { it.depart to it.via }.sortedBy { it.depart }
 
     /** The one to catch: the last option that still arrives by [arriveBy]. */
     fun catch(options: List<Journey>, arriveBy: Long) = options.lastOrNull { it.arrive <= arriveBy }
+
+    /** Long-press text for a time: "DLR 16:40 from Bank DLR Station, towards Woolwich Arsenal DLR Station · arrive 17:16 · 36 min". */
+    fun rideText(j: Journey, hm: (Long) -> String): String {
+        val tail = "arrive ${hm(j.arrive)} · ${dur(j.arrive - j.depart)}"
+        val r = j.first ?: return "Walk, no ride to catch · $tail"
+        return "${r.line} ${hm(r.at)} from ${r.stop}${r.towards?.let { ", towards $it" } ?: ""} · $tail"
+    }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 

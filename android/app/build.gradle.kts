@@ -17,8 +17,8 @@ android {
         applicationId = "io.github.bosthecoder.glance"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.12.0"
+        versionCode = 13
+        versionName = "1.13.0"
     }
 
     signingConfigs {
@@ -53,4 +53,5 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.dynamicanimation:dynamicanimation:1.1.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")   // the real org.json for Tfl.parse; android.jar only has stubs
 }
