@@ -164,6 +164,20 @@ class OverlayService : Service() {
             }
         }
         fun stop(ctx: Context) { ctx.stopService(Intent(ctx, OverlayService::class.java)) }
+
+        /**
+         * Pop-ups for starts: high importance, so Android shows them as heads-up notifications over whatever is open,
+         * with the default sound and a long buzz. The phone's ringer mode applies (silent: none, vibrate: buzz only),
+         * and the user can change any of it in the channel's settings. A channel's settings are fixed once created.
+         */
+        const val STARTS = "starts"
+        fun startsChannel(ctx: Context) = NotificationManagerCompat.from(ctx).createNotificationChannel(
+            NotificationChannelCompat.Builder(STARTS, NotificationManagerCompat.IMPORTANCE_HIGH)
+                .setName("Events starting")
+                .setDescription("Pops up when an event is about to start and when it starts")
+                .setVibrationEnabled(true).setVibrationPattern(BUZZ)
+                .build())
+        private val BUZZ = longArrayOf(0, 500, 200, 500)
     }
 
     private lateinit var wm: WindowManager
@@ -297,6 +311,7 @@ class OverlayService : Service() {
     private fun foreground(): Boolean {
         NotificationManagerCompat.from(this).createNotificationChannel(
             NotificationChannelCompat.Builder("overlay", NotificationManagerCompat.IMPORTANCE_LOW).setName("Floating widget").build())
+        startsChannel(this)
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(this, "overlay")
             .setSmallIcon(R.drawable.ic_notif)
@@ -488,14 +503,36 @@ class OverlayService : Service() {
                 duration = 260; repeatCount = if (a is Alert.Starting) 3 else 1; repeatMode = ValueAnimator.REVERSE; start()   // two pulses, or one
             }
         }
-        if (a !is Alert.Starting && prefs.vibrate) {
+        val popped = (a is Alert.Starting || a is Alert.Coming && a.starting) && popUp(a, now)
+        if (a !is Alert.Starting && !popped && prefs.vibrate) {
             val v = if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
             else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
-            val once = VibrationEffect.createOneShot(120, VibrationEffect.DEFAULT_AMPLITUDE)
+            val once = VibrationEffect.createWaveform(BUZZ, -1)
             // Background apps only vibrate with a notification, alarm or ringtone usage (Vibrator docs).
             if (Build.VERSION.SDK_INT >= 33) v.vibrate(once, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_NOTIFICATION))
             else @Suppress("DEPRECATION") v.vibrate(once, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build())
         }
+    }
+
+    /**
+     * A heads-up notification for a start, "in 5 min" and then "now" (same tag and id, so one replaces the other).
+     * False if notifications or the channel are off, so the caller buzzes instead.
+     */
+    private fun popUp(a: Alert, now: Long): Boolean {
+        val nm = NotificationManagerCompat.from(this)
+        if (!nm.areNotificationsEnabled() || nm.getNotificationChannelCompat(STARTS)?.importance == NotificationManagerCompat.IMPORTANCE_NONE) return false
+        val e = a.ev
+        val n = NotificationCompat.Builder(this, STARTS)
+            .setSmallIcon(R.drawable.ic_notif)
+            .setContentTitle(if (a is Alert.Starting) "Now: ${e.title}" else "${e.title} in ${dur(e.begin - now)}")
+            .setContentText("${hm(e.begin)} – ${hm(e.end)}")
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setContentIntent(PendingIntent.getActivity(this, e.id.toInt(), eventIntent(e), PendingIntent.FLAG_IMMUTABLE))
+            .setAutoCancel(true)
+            .setTimeoutAfter(if (a is Alert.Starting) 10 * MIN else e.begin - now)
+            .build()
+        try { nm.notify("start", e.id.toInt(), n) } catch (_: SecurityException) { return false }   // permission revoked just now
+        return true
     }
 
     private fun alerting() = banner != null || Plan.headsUp(events, System.currentTimeMillis(), prefs.headsUp)
@@ -593,15 +630,18 @@ class OverlayService : Service() {
      * Opens the event in the calendar app (Calendar Provider's documented ACTION_VIEW on the event's URI; the
      * begin/end extras pick the occurrence of a repeating one). Allowed from the overlay: Glance holds SYSTEM_ALERT_WINDOW.
      */
-    private fun openEvent(e: Ev) {
+    private fun eventIntent(e: Ev): Intent {
         // All-day times were moved to local midnight for display; the provider keeps them at UTC midnight.
         fun t(ms: Long) = if (e.allDay) day(ms).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() else ms
-        val i = Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, e.eventId))
+        return Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, e.eventId))
             .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, t(e.begin))
             .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, t(e.end))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    private fun openEvent(e: Ev) {
         try {
-            startActivity(i)
+            startActivity(eventIntent(e))
             collapse()   // Compact: don't leave the card over the event
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(ui, "No calendar app to open this event", Toast.LENGTH_SHORT).show()

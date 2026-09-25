@@ -162,6 +162,11 @@ class MainActivity : ComponentActivity() {
         choice("Idle opacity", listOf(25, 50, 75, 100), { "$it%" }, prefs.idleOpacity) { prefs.idleOpacity = it }
         choice("Heads-up before a change", listOf(2, 5, 10), { "$it min" }, prefs.headsUp) { prefs.headsUp = it }
         toggle("Vibrate on reminders and heads-ups", prefs.vibrate) { prefs.vibrate = it }
+        list.addView(button("Pop-up when events start: sound and vibration", 0xFF1A1A1E.toInt()) {
+            OverlayService.startsChannel(this)   // the settings page needs the channel to exist
+            startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName).putExtra(Settings.EXTRA_CHANNEL_ID, OverlayService.STARTS))
+        }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
         toggle("Start when the phone boots", prefs.onBoot) { prefs.onBoot = it }
         list.addView(button("Reset size", 0xFF1A1A1E.toInt()) { prefs.resetSize() }.apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)

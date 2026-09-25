@@ -45,7 +45,8 @@ Settings (same names as the Windows app):
 | **Opacity at the side** | 25/50/75/100% (default 75%): the strip's opacity while you're not touching it |
 | Idle opacity | 25/50/75/100%: the pill's or card's opacity after 3 seconds untouched |
 | Heads-up before a change | 2/5/10 minutes |
-| Vibrate on reminders and heads-ups | On/off |
+| Vibrate on reminders and heads-ups | On/off. Starts use the pop-up's own vibration instead |
+| **Pop-up when events start** (button) | Android's settings for the pop-up: sound, vibration, on/off |
 | Start when the phone boots | On/off |
 | **Check for updates** (button, under Updates) | See [Updates](#updates) |
 | **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) and the pill back to sizing itself to its text (up to 60% of the screen). Up next isn't changed |
@@ -67,13 +68,15 @@ It sits at **Opacity at the side** while you're not touching it. An alert brings
 
 ## Alerts
 
-The alerts show inside the pill, card or side strip, not as system notifications, and each kind has its own colour:
+The alerts show inside the pill, card or side strip, and each kind has its own colour. Starts also get a pop-up notification (below):
 
 | When | What you see |
 | --- | --- |
-| The last few minutes before the current event ends or the next one starts (the heads-up setting, 5 min by default) | An **amber** clock banner: "Next: *title* · in 4m" if something starts, or "Ending: *title* · in 4m" if the current event just ends (a start wins when both happen at once). It pulses once and vibrates once, and the outline and countdown turn amber. It stays until the change happens or you tap it away. If a blue reminder for the same event is already showing, that stays and you just get the pulse and vibration |
+| The last few minutes before the current event ends or the next one starts (the heads-up setting, 5 min by default) | An **amber** clock banner: "Next: *title* · in 4m" if something starts, or "Ending: *title* · in 4m" if the current event just ends (a start wins when both happen at once). It pulses once, and the outline and countdown turn amber. It stays until the change happens or you tap it away. If a blue reminder for the same event is already showing, that stays and you just get the pulse. A heads-up for an end vibrates; one for a start gets the pop-up instead |
 | An event starts | A **green** "▶ Now: *title*" banner that pulses twice and stays about 20 seconds |
-| One of the event's own reminders is due | A **blue** bell banner, "*title* · in 10m", with one short vibration. It stays until you tap it or the event starts |
+| One of the event's own reminders is due | A **blue** bell banner, "*title* · in 10m", with a double vibration. It stays until you tap it or the event starts |
+
+**Pop-up for starts.** "*title* in 5m" at the heads-up and "Now: *title*" when it starts show as a notification that pops up over whatever is open, with the phone's notification sound and a long double buzz. Silent mode silences it and vibrate mode only buzzes. The "now" one replaces the "in 5m" one, and tapping it opens the event. Change the sound, vibration or lock-screen display, or turn it off, with **Pop-up when events start** in settings (Android's page for the "Events starting" channel). With notifications off, Glance just vibrates.
 
 Each alert fires once. After a restart it only fires alerts that were due in the last 2 minutes, so it doesn't replay the morning's.
 
@@ -143,5 +146,6 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 - **Throwing.** Glance measures the release speed with `VelocityTracker`. Anything faster than 800 dp/s counts as a throw. The glide is a low-stiffness, no-bounce `SpringAnimation` sideways and a `FlingAnimation` with friction up and down, both from AndroidX `dynamicanimation`.
 - **Android 14+** requires a declared type for every foreground service. None of the specific types fit a floating widget, so Glance uses `specialUse` with a short explanation in the manifest. Starting it from `BOOT_COMPLETED` is still allowed on Android 15 (the new boot restriction covers data sync, camera, media, phone call and microphone services, not `specialUse`). If Android refuses to start it anyway, Glance logs it and stops quietly instead of crashing.
 - **Reminder vibration** uses the notification vibration usage, which Android requires for vibrating from the background, so it follows your phone's notification vibration setting.
+- **Pop-ups** use a high-importance notification channel, which is how Android shows heads-up notifications. A channel's sound and vibration can't be changed by the app once it exists, so they live in Android's channel settings.
 - **Some phones kill background apps anyway** (Samsung, Xiaomi, OnePlus, Huawei and others). If the pill vanishes after a while, set Glance's battery use to "Unrestricted" or add it to the battery exceptions. [dontkillmyapp.com](https://dontkillmyapp.com) has the steps for each brand.
 - After an update from the settings screen, the widget starts again by itself if it was running. After installing an APK by hand, open Glance and tap Start.
