@@ -49,5 +49,20 @@
                 </ControlTemplate>
             </Thumb.Template>
         </Thumb>
+        <!-- While expanded in Compact view: the outline of what shows when idle, with its own corner to resize it -->
+        <Canvas x:Name="IdleLayer" Visibility="Collapsed">
+            <Rectangle x:Name="IdleOutline" StrokeDashArray="3 3" StrokeThickness="1" RadiusX="6" RadiusY="6" Opacity="0" IsHitTestVisible="False"
+                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Window}}"/>
+            <Thumb x:Name="IdleGrip" Width="18" Height="18" Cursor="SizeNWSE" ToolTip="Drag to resize what shows when you're not hovering">
+                <Thumb.Template>
+                    <ControlTemplate>
+                        <Border Background="Transparent">
+                            <Path Data="M 13,5 L 13,13 L 5,13" StrokeThickness="1.4" StrokeDashArray="1.5 1.5" Opacity="0.7"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Thumb.Template>
+            </Thumb>
+        </Canvas>
     </Grid>
 </Window>

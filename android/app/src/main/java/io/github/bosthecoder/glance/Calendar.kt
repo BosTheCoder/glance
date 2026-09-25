@@ -99,7 +99,10 @@ class Prefs(ctx: Context) {
     /** Card size from the corner grip, in dp; -1 = the default (85% of the width, 60% of the height). */
     var cardWidth: Int get() = sp.getInt("cardWidth", -1); set(v) = sp.edit { putInt("cardWidth", v) }
     var listHeight: Int get() = sp.getInt("listHeight", -1); set(v) = sp.edit { putInt("listHeight", v) }
-    fun resetSize() = sp.edit { remove("cardWidth"); remove("listHeight") }
+    /** The pill's width cap from a pinch, in dp; -1 = 60% of the screen. */
+    var pillWidth: Int get() = sp.getInt("pillWidth", -1); set(v) = sp.edit { putInt("pillWidth", v) }
+    /** Card and pill sizes back to their defaults. Up next stays: it's content, not size. */
+    fun resetSize() = sp.edit { remove("cardWidth"); remove("listHeight"); remove("pillWidth") }
     var onBoot: Boolean get() = sp.getBoolean("onBoot", false); set(v) = sp.edit { putBoolean("onBoot", v) }
     var y: Int get() = sp.getInt("y", -1); set(v) = sp.edit { putInt("y", v) }
     var right: Boolean get() = sp.getBoolean("right", true); set(v) = sp.edit { putBoolean("right", v) }

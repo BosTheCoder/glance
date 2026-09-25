@@ -33,6 +33,7 @@ import android.util.Log
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
@@ -42,7 +43,6 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -116,6 +116,30 @@ class Grip(ctx: Context) : View(ctx) {
             c.drawLine(x(inset), h - inset - k, x(inset + k), h - inset, p)
         }
     }
+}
+
+/** Lays its children out left to right and wraps onto new lines, so every all-day chip shows without scrolling. */
+class WrapLayout(ctx: Context, private val gapX: Int, private val gapY: Int) : ViewGroup(ctx) {
+    /** Positions each visible child; returns the height used. Shared by measure and layout so they agree. */
+    private fun flow(maxW: Int, place: Boolean): Int {
+        var x = 0; var y = 0; var lineH = 0
+        for (i in 0 until childCount) {
+            val c = getChildAt(i).takeIf { it.visibility != GONE } ?: continue
+            if (x > 0 && x + c.measuredWidth > maxW) { x = 0; y += lineH + gapY; lineH = 0 }
+            if (place) c.layout(paddingLeft + x, paddingTop + y, paddingLeft + x + c.measuredWidth, paddingTop + y + c.measuredHeight)
+            x += c.measuredWidth + gapX; lineH = maxOf(lineH, c.measuredHeight)
+        }
+        return y + lineH
+    }
+
+    override fun onMeasure(w: Int, h: Int) {
+        val maxW = (if (MeasureSpec.getMode(w) == MeasureSpec.UNSPECIFIED) Int.MAX_VALUE else MeasureSpec.getSize(w)) - paddingLeft - paddingRight
+        val childW = MeasureSpec.makeMeasureSpec(maxOf(0, maxW), MeasureSpec.AT_MOST)   // a chip wider than a line ellipsizes
+        for (i in 0 until childCount) getChildAt(i).measure(childW, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        setMeasuredDimension(MeasureSpec.getSize(w), flow(maxW, false) + paddingTop + paddingBottom)
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) { flow(r - l - paddingLeft - paddingRight, true) }
 }
 
 /** ScrollView that stops growing at [maxH]. */
@@ -364,6 +388,9 @@ class OverlayService : Service() {
 
     private fun cardW() = prefs.cardWidth.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(220), maxOf(dp(220), maxCardW())) }
         ?: if (full) minOf((W * 0.85f).toInt(), dp(360)) else (W * 0.85f).toInt()
+    /** The pill's width cap (titles ellipsize inside it): the pinch's, or 60% of the screen. */
+    private fun pillW() = pinchW ?: prefs.pillWidth.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(160), maxOf(dp(160), maxCardW())) }
+        ?: (W * 0.6f).toInt()
     private fun maxCardW() = edges().let { W - it.left - it.right }
     /** The agenda's max height: the grip's, kept on screen, or 60% of the screen. */
     private fun listH() = prefs.listHeight.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(120), maxOf(dp(120), edges().let { e -> H - e.top - e.bottom - dp(120) })) }
@@ -486,7 +513,7 @@ class OverlayService : Service() {
         val heads = Plan.headsUp(events, now, prefs.headsUp)
         val e = cur.firstOrNull()
 
-        title.maxWidth = (W * 0.6f).toInt() - dp(110)
+        title.maxWidth = pillW() - dp(110)
         when {
             !Cal.granted(this) -> { title.text = "Grant calendar access"; countdown.text = ""; dot.setColor(AMBER) }
             e != null -> { title.text = e.title; countdown.text = "${dur(e.end - now)} left"; dot.setColor(e.color or 0xFF000000.toInt()) }
@@ -518,7 +545,7 @@ class OverlayService : Service() {
         pillBg.setStroke(dp(1), rim); cardBg.setStroke(dp(1), rim); dockBg.setStroke(dp(1), rim)
 
         nextBox.removeAllViews()
-        if (!full) Plan.next(events, now, prefs.nextCount).forEach { nextBox.addView(nextRow(it, now)) }
+        if (!full) Plan.next(events, now, pinchCount ?: prefs.nextCount).forEach { nextBox.addView(nextRow(it, now)) }
 
         // An alert brings it to full opacity (docked too: it stays docked); otherwise it fades after 3 s.
         if (alerting()) { h.removeCallbacks(fadeR); if (faded) wake() }
@@ -598,10 +625,9 @@ class OverlayService : Service() {
         gravity = Gravity.CENTER_VERTICAL
         background = GradientDrawable().apply { cornerRadius = dp(9).toFloat(); setColor(CARD) }
         setPadding(dp(8), dp(2), dp(9), dp(3))
-        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(5) }
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginEnd = dp(6) })
-        addView(ui.text(label, 11.5f, Color.WHITE))
+        addView(ui.text(label, 11.5f, Color.WHITE), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
     }
 
     private fun renderCard(now: Long, cur: List<Ev>, up: List<Ev>) {
@@ -610,9 +636,9 @@ class OverlayService : Service() {
         body.removeAllViews()
 
         val allDay = events.filter { it.allDay && it.begin <= now && it.end > now }
-        if (allDay.isNotEmpty()) body.addView(HorizontalScrollView(ui).apply {
-            isHorizontalScrollBarEnabled = false; setPadding(0, 0, 0, dp(8))
-            addView(LinearLayout(context).apply { allDay.forEach { addView(chip(it, today)) } })
+        if (allDay.isNotEmpty()) body.addView(WrapLayout(ui, dp(5), dp(5)).apply {
+            setPadding(0, 0, 0, dp(8))
+            allDay.forEach { addView(chip(it, today), ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)) }
         })
 
         cur.forEach { body.addView(nowCard(it, now)) }
@@ -789,12 +815,56 @@ class OverlayService : Service() {
         val c = MotionEvent.obtain(e); c.setLocation(e.rawX, e.rawY); velocity?.addMovement(c); c.recycle()
     }
 
+    // ---------- pinch (the pill) ----------
+
+    private var pinched = false          // this touch became a pinch: no drag, tap, throw or snap until every finger is up
+    private var pinchW: Int? = null      // live values while pinching; saved to prefs when it ends
+    private var pinchCount: Int? = null
+    private var pinchStartW = 0
+    private var pinchStartCount = 1
+    private var spanX0 = 0f
+    private var spanY0 = 0f
+
+    /** Pinch the pill: spreading sideways widens it, spreading up/down adds an Up next row per row height. */
+    private val pinch by lazy {
+        ScaleGestureDetector(ui, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
+                pinched = true; dragging = false
+                h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel()
+                spanX0 = d.currentSpanX; spanY0 = d.currentSpanY
+                pinchStartW = pillW(); pinchStartCount = prefs.nextCount
+                return true
+            }
+            override fun onScale(d: ScaleGestureDetector): Boolean {
+                pinchW = (pinchStartW + (d.currentSpanX - spanX0).toInt()).coerceIn(dp(160), maxOf(dp(160), maxCardW()))
+                pinchCount = (pinchStartCount + ((d.currentSpanY - spanY0) / dp(22)).toInt()).coerceIn(1, 7)
+                render()
+                return true
+            }
+            override fun onScaleEnd(d: ScaleGestureDetector) {
+                pinchW?.let { prefs.pillWidth = (it / resources.displayMetrics.density).roundToInt() }
+                pinchCount?.let { prefs.nextCount = it }
+                pinchW = null; pinchCount = null
+            }
+        }).apply { isQuickScaleEnabled = false }   // double-tap-and-drag would fight tap and drag
+    }
+
     private fun onTouch(e: MotionEvent): Boolean {
         if (e.actionMasked == MotionEvent.ACTION_OUTSIDE) { collapse(); return false }
         if (expanded) return false
+        if (!docked && !full) pinch.onTouchEvent(e)
+        if (pinched) {
+            if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) {
+                pinched = false; touching = false
+                velocity?.recycle(); velocity = null
+                snap()                          // in case a drag moved it before the second finger landed
+                scheduleFade()
+            }
+            return true
+        }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                touching = true; dragging = false; longFired = false
+                touching = true; dragging = false; longFired = false; pinched = false
                 downX = e.rawX; downY = e.rawY
                 velocity?.recycle(); velocity = VelocityTracker.obtain(); track(e)
                 h.removeCallbacks(fadeR)

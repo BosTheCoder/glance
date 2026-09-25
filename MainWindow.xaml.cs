@@ -26,6 +26,8 @@ public partial class MainWindow : Window
     bool expanded;   // agenda showing: while hovered, or always in Full view
     bool hovering;   // mouse is over the widget: full brightness
     double? shiftedFrom;   // original Top when expanding had to move the window up to stay on screen
+    double widthShift;     // how far expanding moved it left, when it's narrower idle and sits on the right of the screen
+    double rowDrag;        // vertical drag on the idle grip not yet turned into a whole Up next row
     IntPtr hwnd;
     double alpha = 1, alphaTarget = 1;
     Brush card = Brushes.Transparent, track = Brushes.Transparent;
@@ -120,7 +122,7 @@ public partial class MainWindow : Window
             else Expand();
             if (DateTime.Now - lastFetch > TimeSpan.FromSeconds(20)) await Refresh();
         };
-        MouseLeave += (_, _) => { if (!ContextMenu.IsOpen && !Grip.IsDragging) collapseDelay.Start(); };
+        MouseLeave += (_, _) => { if (!ContextMenu.IsOpen && !Grip.IsDragging && !IdleGrip.IsDragging) collapseDelay.Start(); };
         ContextMenu.Closed += (_, _) => { if (!IsMouseOver) collapseDelay.Start(); };
         ContextMenuOpening += (_, _) => BuildMenu();
         LocationChanged += (_, _) => { if (dragging) dragTrail.Add((Environment.TickCount64, Left, Top)); };
@@ -144,7 +146,7 @@ public partial class MainWindow : Window
             else if (s.Docked switch { "Left" => Left < wa.Left + 60, "Right" => Left + ActualWidth > wa.Right - 60, _ => Top < wa.Top + 60 })
             { DockTo(s.Docked); return; }   // slid along the edge
             else { s.Docked = null; ApplyDock(); }   // pulled away from the edge: back to normal where it was dropped
-            s.Left = Left; s.Top = Top; s.Save();
+            s.Left = Left + widthShift; s.Top = Top; s.Save();
         };
         Pin.MouseLeftButtonDown += (_, e) => { e.Handled = true; Set(() => s.Pinned = !s.Pinned); };
         Status.MouseLeftButtonDown += async (_, e) =>
@@ -161,6 +163,23 @@ public partial class MainWindow : Window
             ApplySize();
         };
         Grip.DragCompleted += (_, _) => { s.Save(); if (!IsMouseOver) collapseDelay.Start(); };
+
+        // The idle size is set from the expanded view, WYSIWYG: sideways for its width, down/up for more or fewer Up next rows.
+        IdleGrip.MouseEnter += (_, _) => IdleOutline.Opacity = 0.6;
+        IdleGrip.MouseLeave += (_, _) => { if (!IdleGrip.IsDragging) IdleOutline.Opacity = 0; };
+        IdleGrip.DragStarted += (_, _) => rowDrag = 0;
+        IdleGrip.DragDelta += (_, e) =>
+        {
+            s.IdleWidth = Math.Clamp(IdleWidth() + e.HorizontalChange / s.Scale, 160, s.Width);
+            rowDrag += e.VerticalChange / s.Scale;
+            const double row = 24;   // about one Up next row
+            if (rowDrag > row && s.NextCount < 7) { s.NextCount++; rowDrag -= row; Render(); }
+            else if (rowDrag < -row && s.NextCount > 1) { s.NextCount--; rowDrag += row; Render(); }
+            PlaceIdleFrame();
+        };
+        IdleGrip.DragCompleted += (_, _) => { IdleOutline.Opacity = 0; s.Save(); if (!IsMouseOver) collapseDelay.Start(); };
+        NextPanel.SizeChanged += (_, _) => PlaceIdleFrame();
+        Root.SizeChanged += (_, _) => PlaceIdleFrame();
 
         // Hand edits to settings.json (custom colours etc.) apply without a restart.
         watcher.Changed += (_, _) => Dispatcher.InvokeAsync(async () =>
@@ -246,9 +265,11 @@ public partial class MainWindow : Window
         Render();
     }
 
+    double IdleWidth() => Math.Min(s.IdleWidth ?? s.Width, s.Width);
+
     void ApplySize()
     {
-        Root.Width = s.Docked switch { null => s.Width, "Top" => double.NaN, _ => StripWidth };
+        Root.Width = s.Docked switch { null => expanded ? s.Width : IdleWidth(), "Top" => double.NaN, _ => StripWidth };
         Zoom.ScaleX = Zoom.ScaleY = s.Scale;
         Scroll.MaxHeight = s.ListHeight;
     }
@@ -539,6 +560,19 @@ public partial class MainWindow : Window
         expanded = hovering || s.View == "Full";
         Scroll.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         ShowAllDay();
+        ApplySize();
+        IdleLayer.Visibility = hovering && s.View != "Full" && s.Docked == null ? Visibility.Visible : Visibility.Collapsed;
+        PlaceIdleFrame();
+    }
+
+    /// Outline the part of the expanded widget that stays when idle: the idle width, down to the last Up next row.
+    void PlaceIdleFrame()
+    {
+        if (IdleLayer.Visibility != Visibility.Visible || !IsLoaded) return;
+        var bottom = NextPanel.TranslatePoint(new Point(0, NextPanel.ActualHeight), IdleLayer).Y + 8 * s.Scale;
+        var w = IdleWidth() * s.Scale;
+        IdleOutline.Width = w; IdleOutline.Height = bottom;
+        Canvas.SetLeft(IdleGrip, w - IdleGrip.Width); Canvas.SetTop(IdleGrip, bottom - IdleGrip.Height);
     }
 
     void Expand()
@@ -548,6 +582,10 @@ public partial class MainWindow : Window
         Pin.Opacity = 0.7;
         Grip.Opacity = 0.5;
         FadeTo(1);
+        // Narrower when idle and on the right half of the screen: grow leftwards, so the right edge stays put.
+        var wa0 = Native.WorkArea(this, hwnd);
+        var grow = (s.Width - IdleWidth()) * s.Scale;
+        if (grow > 0 && widthShift == 0 && s.View != "Full" && Left + ActualWidth / 2 > (wa0.Left + wa0.Right) / 2) { widthShift = grow; Left -= grow; }
         // Grow upward instead of off the bottom of the screen.
         Dispatcher.InvokeAsync(() =>
         {
@@ -565,6 +603,11 @@ public partial class MainWindow : Window
         Pin.Opacity = 0;
         Grip.Opacity = 0;
         if (!expanded && shiftedFrom is double t) { Top = t; shiftedFrom = null; }
+        // Back to the idle width; on the right half of the screen keep the right edge where it is.
+        var wa = Native.WorkArea(this, hwnd);
+        var shrink = (s.Width - IdleWidth()) * s.Scale;
+        if (s.View != "Full" && shrink > 0 && (widthShift != 0 || Left + ActualWidth / 2 > (wa.Left + wa.Right) / 2)) Left += shrink;
+        widthShift = 0;
         FadeTo(IdleOpacity());
     }
 

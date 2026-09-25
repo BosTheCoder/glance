@@ -23,9 +23,10 @@ In the default Compact view:
 
 | Do this | To |
 | --- | --- |
-| Tap the pill | Expand it: clock, all-day chips, the current event, what's next and a scrollable agenda |
+| Tap the pill | Expand it: clock, all-day chips (they wrap onto as many lines as they need, so you never scroll sideways), the current event, what's next and a scrollable agenda |
 | Tap the clock, or anywhere outside | Collapse it again |
 | Drag the grip in the card's bottom corner (the one away from the screen edge) | Resize the card: inwards makes it wider, down gives the agenda more height. It remembers the size |
+| Pinch the pill | Resize it: spread your fingers sideways to make it wider (long titles show more before they're cut short), up and down to show more or fewer Up next rows (1 to 7). It remembers both |
 | Drag the pill | Move it. It snaps to the nearest left or right edge and remembers where it was |
 | Throw it towards an edge, or drag it mostly off one | Dock it there as the side strip (below) |
 | Leave it for 3 seconds | It fades to the idle opacity. It never moves on its own |
@@ -38,7 +39,7 @@ Settings (same names as the Windows app):
 | Setting | Options |
 | --- | --- |
 | **View** | **Compact** (default): the pill above, which expands on tap. **Full**: the expanded card, all the time |
-| **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now. The expanded card lists the same number under NEXT. Every upcoming timed event, here and in the agenda, shows how long it lasts ("30m", "1h 15m") at the end of its row |
+| **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now (pinching the pill up and down changes it too). The expanded card lists the same number under NEXT. Every upcoming timed event, here and in the agenda, shows how long it lasts ("30m", "1h 15m") at the end of its row |
 | **Items at the side** | 1 to 5 (default 2): rows in the side strip |
 | **Opacity at the side** | 25/50/75/100% (default 75%): the strip's opacity while you're not touching it |
 | Idle opacity | 25/50/75/100%: the pill's or card's opacity after 3 seconds untouched |
@@ -46,7 +47,7 @@ Settings (same names as the Windows app):
 | Vibrate on reminders and heads-ups | On/off |
 | Start when the phone boots | On/off |
 | **Check for updates** (button, under Updates) | See [Updates](#updates) |
-| **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) |
+| **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) and the pill back to its default width (up to 60% of the screen). Up next isn't changed |
 
 ### Full view
 

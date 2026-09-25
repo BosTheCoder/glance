@@ -182,8 +182,8 @@ class MainActivity : ComponentActivity() {
             }
             list.postDelayed({ build() }, 300)
         })
-        list.addView(text("Tap the pill to expand it (Full view: drag the card by its clock). Throw it at an edge to dock it as a side strip, tap the strip to bring it back. Long-press for this screen.", 12f, 0x80FFFFFF.toInt()).apply {
-            maxLines = 3; setPadding(0, dp(10), 0, 0)
+        list.addView(text("Tap the pill to expand it (Full view: drag the card by its clock). Pinch the pill to resize it: sideways for width, up and down for Up next rows. Throw it at an edge to dock it as a side strip, tap the strip to bring it back. Long-press for this screen.", 12f, 0x80FFFFFF.toInt()).apply {
+            maxLines = 6; setPadding(0, dp(10), 0, 0)
         })
     }
 

@@ -13,6 +13,7 @@ public class Settings
     public double? Left { get; set; }
     public double? Top { get; set; }
     public double Width { get; set; } = 300;
+    public double? IdleWidth { get; set; }          // width when collapsed (Compact view, not hovered); null = same as Width
     public double ListHeight { get; set; } = 320;   // max height of the expanded agenda
     public double Scale { get; set; } = 1.0;
 

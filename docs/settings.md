@@ -13,6 +13,7 @@ Everything in the right-click menu is saved to `settings.json` next to `Glance.e
 | `DockCount` | `2` | Events shown in the side strip (1–5): what's on now with time left and a bar, then what's next |
 | `DockOpacity` | `0.75` | Strip opacity when you're not hovering it |
 | `Width` | `300` | Widget width. Also set by dragging the corner |
+| `IdleWidth` | `null` | Width when not hovered (Compact view). `null` means the same as `Width`. Set it by dragging the dashed corner that appears while it's expanded: sideways for the width, down or up for more or fewer Up next rows |
 | `ListHeight` | `320` | Maximum height of the expanded agenda. Also set by dragging the corner while it's expanded |
 | `Scale` | `1.0` | Text size multiplier |
 | `Pinned` | `true` | Always on top |

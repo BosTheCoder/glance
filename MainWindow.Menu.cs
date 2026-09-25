@@ -91,7 +91,7 @@ public partial class MainWindow
         {
             var d = new Settings();
             if (s.Docked != null) { s.Docked = null; ApplyDock(); }
-            Set(() => { s.Width = d.Width; s.ListHeight = d.ListHeight; s.Scale = d.Scale; s.Left = s.Top = null; });
+            Set(() => { s.Width = d.Width; s.IdleWidth = null; s.ListHeight = d.ListHeight; s.Scale = d.Scale; s.Left = s.Top = null; });
             PlaceOnScreen();
         }));
         m.Items.Add(Action(update == null ? "Check for updates" : $"Update to {update.Tag}", async () => await CheckForUpdates()));
