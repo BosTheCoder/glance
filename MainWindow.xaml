@@ -1,0 +1,30 @@
+<Window x:Class="Glance.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Glance" Width="300" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="Transparent" Foreground="White"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" GlassFrameThickness="-1" ResizeBorderThickness="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Window.ContextMenu>
+        <ContextMenu/>
+    </Window.ContextMenu>
+    <Border Padding="14,10,14,12" Background="#20000000">
+        <StackPanel>
+            <DockPanel Margin="0,0,0,8">
+                <TextBlock x:Name="Pin" DockPanel.Dock="Right" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                           FontSize="12" Opacity="0" Cursor="Hand" ToolTip="Pin on top"/>
+                <TextBlock x:Name="Clock" Opacity="0.6" FontSize="12"/>
+            </DockPanel>
+            <StackPanel x:Name="NowPanel"/>
+            <StackPanel x:Name="NextPanel" Margin="0,4,0,0"/>
+            <ScrollViewer x:Name="Scroll" Visibility="Collapsed" MaxHeight="320" Margin="0,10,0,0"
+                          VerticalScrollBarVisibility="Hidden">
+                <StackPanel x:Name="Agenda"/>
+            </ScrollViewer>
+            <TextBlock x:Name="Status" Opacity="0.75" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
+        </StackPanel>
+    </Border>
+</Window>

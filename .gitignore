@@ -1,0 +1,6 @@
+bin/
+obj/
+client.json
+token.dat
+settings.json
+out/
