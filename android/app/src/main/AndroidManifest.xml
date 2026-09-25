@@ -31,7 +31,8 @@
                 android:value="Floating calendar widget that shows the current and next event over other apps" />
         </service>
 
-        <receiver android:name=".BootReceiver" android:exported="true">
+        <!-- Not exported: BOOT_COMPLETED comes from the system, which still reaches it. -->
+        <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>

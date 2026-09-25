@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 // Fails if: the heads-up window is computed from the wrong edge, all-day events leak into now/next,
-// alerts replay after a restart, or a reminder fires twice.
+// alerts replay after a restart, a reminder fires twice, or Up next shows the wrong count/order.
 class AlertsTest {
     private val t0 = 1_800_000_000_000L
     private fun ev(id: Long, startMin: Int, lenMin: Int, allDay: Boolean = false, reminders: List<Int> = emptyList()) =
@@ -22,6 +22,15 @@ class AlertsTest {
         assertEquals(listOf(lunch), Plan.upcoming(events, t0))
         assertEquals(meeting.end, Plan.nextChange(events, t0))
         assertEquals(lunch.begin, Plan.nextChange(events, meeting.end))   // free: next start is the change
+    }
+
+    @Test fun upNextTakesCountTimedEventsInOrder() {
+        val later = (1..8).map { ev(10L + it, 60 * it, 30) }.shuffled(java.util.Random(1))
+        val all = events + later + ev(30, 120, 24 * 60, allDay = true)
+        assertEquals(listOf(lunch), Plan.next(all, t0, 1))                         // the running meeting isn't "next"
+        assertEquals(listOf(lunch) + (1..6).map { ev(10L + it, 60 * it, 30) }, Plan.next(all, t0, 7))
+        assertEquals(3, Plan.next(all, t0, 3).size)
+        assertEquals(listOf(ev(18, 480, 30)), Plan.next(all, t0 + 461 * MIN, 5))   // fewer left than asked for
     }
 
     @Test fun headsUpOnlyInLastMinutesBeforeChange() {

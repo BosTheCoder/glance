@@ -1,6 +1,6 @@
 # Glance for Android
 
-A floating pill that sits on the edge of your screen over any app. It shows what's on **now** (with the time left) or when you're free until, and it tucks itself away when you're not using it. Tap it to see the rest of the week.
+A floating pill that sits on the edge of your screen over any app. It shows what's on **now** (with the time left) or when you're free until, and it tucks itself away when you're not using it. Tap it to see the rest of the week, or set **View** to **Full** to keep that card open all the time.
 
 It reads the calendars your phone already syncs from your Google account, so there's no Google sign-in and no OAuth client to set up.
 
@@ -19,6 +19,8 @@ If a calendar is missing, check that it's syncing: in Google Calendar, open Sett
 
 ## Using it
 
+In the default Compact view:
+
 | Do this | To |
 | --- | --- |
 | Tap the pill | Expand it: clock, all-day chips, the current event, what's next and a scrollable agenda |
@@ -29,7 +31,20 @@ If a calendar is missing, check that it's syncing: in Google Calendar, open Sett
 | Long-press the pill | Open the settings screen |
 | Tap an alert banner | Dismiss it |
 
-Settings: idle opacity (25/50/75/100%), heads-up time (2/5/10 minutes), vibrate on reminders, start when the phone boots.
+Settings (same names as the Windows app):
+
+| Setting | Options |
+| --- | --- |
+| **View** | **Compact** (default): the pill above, which expands on tap and tucks to the edge. **Full**: the expanded card, all the time |
+| **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now. The expanded card lists the same number under NEXT |
+| Idle opacity | 25/50/75/100% |
+| Heads-up before a change | 2/5/10 minutes |
+| Vibrate on reminders | On/off |
+| Start when the phone boots | On/off |
+
+### Full view
+
+The card stays open: clock, all-day chips, what's on now, up next and the agenda. Drag it by the clock row to move it; it snaps to the nearer left or right edge like the pill does. After 3 seconds without a touch it fades to the idle opacity, but it doesn't slide off the edge or collapse, and tapping outside it does nothing. Touch it anywhere to bring it back to full opacity. Alerts work the same way: the banner shows at the top of the card and the card's outline changes colour. Long-press the clock row for settings.
 
 ## Alerts
 
@@ -50,6 +65,7 @@ Glance reads Android's calendar provider (`CalendarContract`), the same local da
 - `Instances` from today 00:00 to 7 days ahead, with recurring events already expanded.
 - Events you've declined are skipped. All-day events show as chips and don't count as "now".
 - Reminders come from each event's own pop-up reminders (`Reminders` with method alert or default).
+- The queries run on a background thread and the result is handed to the main thread, so a slow provider can't freeze the pill.
 
 Nothing leaves the phone. The app has no internet permission.
 
@@ -74,6 +90,8 @@ export JAVA_HOME=$(brew --prefix openjdk@17)/libexec ANDROID_HOME=$HOME/Android/
 ./gradlew :app:testDebugUnitTest :app:assembleRelease
 ```
 
+The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`), which keeps the APK small now that it uses AndroidX (`core-ktx`, `activity-ktx`, `dynamicanimation`). Those are the newest releases that still build against `compileSdk 35`.
+
 **Signing.** `app/build.gradle.kts` reads `~/.config/glance/keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). If that file isn't there, the release APK is signed with the debug key, which is fine for trying it out. Keep the release keystore: Android only accepts an update signed with the same key as the installed app.
 
 ## Layout
@@ -83,14 +101,17 @@ export JAVA_HOME=$(brew --prefix openjdk@17)/libexec ANDROID_HOME=$HOME/Android/
 | `main/.../Model.kt` | Pure Kotlin, no Android: the `Ev` model, now/next and heads-up (`Plan`), which alerts are due (`AlertTracker`), `dur()` |
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
 | `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, drag/snap/tuck, alerts |
-| `main/.../MainActivity.kt` | Setup screen: permissions, calendar picker, settings, Start/Stop |
+| `main/.../MainActivity.kt` | Setup screen (edge to edge): permissions, calendar picker, settings, Start/Stop |
 | `main/.../BootReceiver.kt` | Restarts the service after a reboot if "start on boot" is on |
 | `main/res/` | Bell and notification vectors, adaptive launcher icon (foreground cut from `assets/source.png`, background `#0B1030`) |
-| `test/.../AlertsTest.kt` | JVM tests for now/next, the heads-up window and alert de-duplication |
+| `test/.../AlertsTest.kt` | JVM tests for now/next, Up next, the heads-up window and alert de-duplication |
 
 ## Notes
 
 - **Battery.** It runs as a foreground service so Android doesn't kill it. It wakes every 30 seconds, and at the exact moment something changes, and reads a local database. There's no network use.
-- **Android 14+** requires a declared type for every foreground service. Glance uses `specialUse` with a short explanation, which is allowed for sideloaded apps.
+- **Why an overlay and not a bubble.** Android's Bubbles API only floats *conversation* notifications (a `MessagingStyle` notification tied to a sharing shortcut), so it can't host a calendar. A `TYPE_APPLICATION_OVERLAY` window with the "Display over other apps" permission is still the supported way to keep your own view on screen over other apps. The window never takes keyboard focus and passes touches outside itself straight to the app underneath, so Android 12's block on untrusted touches doesn't affect it. On Android 11+ it's built from a window context, as the platform docs ask for windows added from a service.
+- **Gesture navigation.** The pill stays between the status bar and the navigation bar, and when it tucks away the tab sticks out past the back-gesture zone (read from the system's gesture insets on Android 11+), so a swipe on the tab moves the pill instead of going back.
+- **Android 14+** requires a declared type for every foreground service. None of the specific types fit a floating widget, so Glance uses `specialUse` with a short explanation in the manifest. Starting it from `BOOT_COMPLETED` is still allowed on Android 15 (the new boot restriction covers data sync, camera, media, phone call and microphone services, not `specialUse`). If Android refuses to start it anyway, Glance logs it and stops quietly instead of crashing.
+- **Reminder vibration** uses the notification vibration usage, which Android requires for vibrating from the background, so it follows your phone's notification vibration setting.
 - **Some phones kill background apps anyway** (Samsung, Xiaomi, OnePlus, Huawei and others). If the pill vanishes after a while, set Glance's battery use to "Unrestricted" or add it to the battery exceptions. [dontkillmyapp.com](https://dontkillmyapp.com) has the steps for each brand.
 - After you install an update, open Glance and tap Start again.

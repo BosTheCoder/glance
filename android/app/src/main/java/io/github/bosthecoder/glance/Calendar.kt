@@ -10,6 +10,8 @@ import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Instances
 import android.provider.CalendarContract.Reminders
 import android.provider.Settings
+import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -19,7 +21,7 @@ import java.time.ZoneOffset
 object Cal {
     data class Info(val id: Long, val name: String, val account: String, val color: Int, val visible: Boolean)
 
-    fun granted(ctx: Context) = ctx.checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+    fun granted(ctx: Context) = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
     fun calendars(ctx: Context): List<Info> {
         if (!granted(ctx)) return emptyList()
@@ -83,17 +85,20 @@ class Prefs(ctx: Context) {
     /** null = never picked: use whatever is visible in the phone's calendar app. */
     var calendars: Set<Long>?
         get() = sp.getStringSet("calendars", null)?.map { it.toLong() }?.toSet()
-        set(v) = sp.edit().putStringSet("calendars", v?.map { it.toString() }?.toSet()).apply()
-    var idleOpacity: Int get() = sp.getInt("idleOpacity", 50); set(v) = sp.edit().putInt("idleOpacity", v).apply()
-    var headsUp: Int get() = sp.getInt("headsUp", 5); set(v) = sp.edit().putInt("headsUp", v).apply()
-    var vibrate: Boolean get() = sp.getBoolean("vibrate", true); set(v) = sp.edit().putBoolean("vibrate", v).apply()
-    var onBoot: Boolean get() = sp.getBoolean("onBoot", false); set(v) = sp.edit().putBoolean("onBoot", v).apply()
-    var y: Int get() = sp.getInt("y", -1); set(v) = sp.edit().putInt("y", v).apply()
-    var right: Boolean get() = sp.getBoolean("right", true); set(v) = sp.edit().putBoolean("right", v).apply()
+        set(v) = sp.edit { putStringSet("calendars", v?.map { it.toString() }?.toSet()) }
+    var idleOpacity: Int get() = sp.getInt("idleOpacity", 50); set(v) = sp.edit { putInt("idleOpacity", v) }
+    var headsUp: Int get() = sp.getInt("headsUp", 5); set(v) = sp.edit { putInt("headsUp", v) }
+    var vibrate: Boolean get() = sp.getBoolean("vibrate", true); set(v) = sp.edit { putBoolean("vibrate", v) }
+    var nextCount: Int get() = sp.getInt("nextCount", 1); set(v) = sp.edit { putInt("nextCount", v) }
+    /** "Compact": pill that expands on tap and tucks to the edge. "Full": the expanded card, always. */
+    var view: String get() = sp.getString("view", "Compact")!!; set(v) = sp.edit { putString("view", v) }
+    var onBoot: Boolean get() = sp.getBoolean("onBoot", false); set(v) = sp.edit { putBoolean("onBoot", v) }
+    var y: Int get() = sp.getInt("y", -1); set(v) = sp.edit { putInt("y", v) }
+    var right: Boolean get() = sp.getBoolean("right", true); set(v) = sp.edit { putBoolean("right", v) }
 
     fun chosenCalendars(ctx: Context) = calendars ?: Cal.calendars(ctx).filter { it.visible }.map { it.id }.toSet()
 }
 
 fun canOverlay(ctx: Context) = Settings.canDrawOverlays(ctx)
 fun canNotify(ctx: Context) = Build.VERSION.SDK_INT < 33 ||
-    ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

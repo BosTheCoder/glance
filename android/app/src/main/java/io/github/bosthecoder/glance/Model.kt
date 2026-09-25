@@ -27,6 +27,9 @@ object Plan {
     fun current(events: List<Ev>, now: Long) = events.filter { !it.allDay && it.begin <= now && it.end > now }.sortedBy { it.begin }
     fun upcoming(events: List<Ev>, now: Long) = events.filter { !it.allDay && it.begin > now }.sortedBy { it.begin }
 
+    /** The "Up next" rows: the first [count] upcoming timed events (Windows `NextCount`). */
+    fun next(events: List<Ev>, now: Long, count: Int) = upcoming(events, now).take(count.coerceIn(1, 7))
+
     /** When the pill's content next changes: the current event ends or the next one starts. */
     fun nextChange(events: List<Ev>, now: Long): Long? =
         (current(events, now).map { it.end } + listOfNotNull(upcoming(events, now).firstOrNull()?.begin)).minOrNull()

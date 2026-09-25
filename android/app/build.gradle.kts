@@ -32,7 +32,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true      // R8: shrinks the AndroidX classes we don't use
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
@@ -45,6 +47,10 @@ android {
 
 kotlin { jvmToolchain(17) }
 
+// Newest releases that still build against compileSdk 35 (core 1.17+ and activity 1.11+ need 36).
 dependencies {
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.dynamicanimation:dynamicanimation:1.1.0")
     testImplementation("junit:junit:4.13.2")
 }
