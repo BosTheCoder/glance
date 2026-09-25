@@ -1,31 +1,72 @@
-# Glance
+<p align="center">
+  <img src="assets/glance.png" width="96" alt="Glance icon">
+</p>
 
-A small floating Google Calendar widget for Windows 11: what's on **now**, what's **next**, and the rest of the week when you hover.
+<h1 align="center">Glance</h1>
 
-- Dark acrylic glass, rounded, draggable anywhere, remembers its position
-- Fades to see-through when idle, goes solid and expands to a scrollable agenda on hover; scroll resets when you leave
-- Pin on top (pin icon, or right-click menu)
-- Right-click → **Calendars** to pick which calendars it shows (defaults to the ones ticked in Google Calendar)
-- Right-click → **Opacity when idle** (25/50/75/100%)
-- Grows upward instead of off the bottom of the screen
-- Refreshes every 5 minutes, and on hover if the data is more than a minute old
+<p align="center">
+  A tiny floating Google Calendar widget for Windows 11.<br>
+  What you should be doing <b>now</b>, what's <b>next</b>, and the rest of your week on hover.
+</p>
 
-## Portable
+<p align="center">
+  <a href="https://github.com/BosTheCoder/glance/releases/latest"><img src="https://img.shields.io/github/v/release/BosTheCoder/glance?label=download" alt="Latest release"></a>
+  <a href="https://github.com/BosTheCoder/glance/actions/workflows/build.yml"><img src="https://github.com/BosTheCoder/glance/actions/workflows/build.yml/badge.svg" alt="Build"></a>
+  <img src="https://img.shields.io/badge/.NET-8-512BD4" alt=".NET 8">
+  <img src="https://img.shields.io/badge/Windows-11-0078D4" alt="Windows 11">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/BosTheCoder/glance" alt="MIT licence"></a>
+</p>
 
-One 200 KB `Glance.exe` (needs the .NET 8 Desktop Runtime, already installed on this PC). Everything else lives next to it:
+<p align="center">
+  <img src="docs/images/hero.png" alt="Glance collapsed and expanded" width="620">
+</p>
 
-| File | What |
+## Features
+
+- **Now and next at a glance.** A card for the current event with a time-left bar, plus the next event and a countdown.
+- **Hover to expand** into a scrollable agenda for the days ahead. When you move away it shrinks back and the scroll resets.
+- **Fades when idle.** It's see-through while you work and turns solid when you hover it.
+- **Acrylic glass** in 7 themes, three glass strengths and any custom colour.
+- **Drag to move, drag the corner to resize.** It can be pinned on top and it remembers where you put it.
+- **You pick the calendars**, and changes you make in Google show up within a minute.
+- **Portable.** One `.exe` and nothing to install. Its settings live in a JSON file next to it.
+
+## Install
+
+1. Download **`Glance.exe`** from the [latest release](https://github.com/BosTheCoder/glance/releases/latest). It needs the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). If you don't want to install that, use `Glance-standalone.exe` instead (≈70 MB, no runtime needed).
+2. Put it in a folder of its own, for example `C:\Apps\Glance\`.
+3. Add a Google OAuth client as `client.json` next to it. It takes about 5 minutes: **[docs/google-setup.md](docs/google-setup.md)**.
+4. Run it. Your browser opens for sign-in, and after that the widget fills in.
+
+Want to try it without Google first? Run `Glance.exe --demo`.
+
+## Using it
+
+| Do this | To |
 | --- | --- |
-| `client.json` | Google OAuth **desktop** client (the JSON Cloud Console downloads, or `{"client_id","client_secret"}`) |
-| `token.dat` | Refresh token, DPAPI-encrypted to your Windows user |
-| `settings.json` | Position, pin, idle opacity, chosen calendars |
+| Hover | Expand the agenda and make the widget solid |
+| Drag anywhere | Move it |
+| Drag the bottom-right corner | Resize the width, and the list height while expanded |
+| Click the pin | Keep it on top of other windows |
+| Right-click | Open settings: calendars, theme, glass, idle opacity, text size, how many events, how far ahead, 12/24h, refresh rate, taskbar, start with Windows |
 
-Read-only scope (`calendar.readonly`). Sign in happens in your browser via a loopback redirect, no app publishing needed: the consent screen belongs to your own Cloud project.
+<p align="center"><img src="docs/images/themes.png" alt="Themes" width="720"></p>
 
-## Build
+Every option is also in `settings.json`, and edits to it apply live. See **[docs/settings.md](docs/settings.md)** for the full list, including custom colours.
 
-Builds from WSL with the .NET 8 SDK (`EnableWindowsTargeting`):
+## Develop
 
+```powershell
+git clone https://github.com/BosTheCoder/glance && cd glance
+dotnet run -- --demo          # fake events, no Google account needed
 ```
-just deploy   # publish, copy to C:\Users\Bosire\Apps\Glance, relaunch
-```
+
+To build on Linux or WSL, and for the code layout and release process, see **[docs/development.md](docs/development.md)**.
+
+## Privacy
+
+Glance asks only for the read-only calendar scope (`calendar.readonly`) and talks only to Google. Your refresh token stays on your machine, encrypted with Windows DPAPI for your user account.
+
+## Licence
+
+[MIT](LICENSE)

@@ -186,7 +186,7 @@ public class GoogleCal
     public async Task<List<Ev>> Events(Cal cal, DateTime from, DateTime to)
     {
         static string T(DateTime d) => Uri.EscapeDataString(d.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"));
-        var j = await Get($"calendars/{Uri.EscapeDataString(cal.Id)}/events?singleEvents=true&orderBy=startTime&maxResults=100&timeMin={T(from)}&timeMax={T(to)}");
+        var j = await Get($"calendars/{Uri.EscapeDataString(cal.Id)}/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin={T(from)}&timeMax={T(to)}");
         var list = new List<Ev>();
         foreach (var e in j["items"]!.AsArray())
         {

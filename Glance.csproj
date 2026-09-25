@@ -10,5 +10,10 @@
     <SelfContained>false</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <AssemblyName>Glance</AssemblyName>
+    <ApplicationIcon>assets\glance.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="assets\glance.ico" />
+  </ItemGroup>
 </Project>
