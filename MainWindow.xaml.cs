@@ -187,7 +187,12 @@ public partial class MainWindow : Window
         var now = DateTime.Now;
         Clock.Text = $"{Time(now)}  ·  {now:ddd d MMM}";
         Pin.Text = s.Pinned ? "" : "";
-        NowPanel.Children.Clear(); NextPanel.Children.Clear(); Agenda.Children.Clear();
+        NowPanel.Children.Clear(); NextPanel.Children.Clear(); Agenda.Children.Clear(); AllDayPanel.Children.Clear();
+
+        var allDayToday = events.Where(e => e.AllDay && e.Start <= now && e.End > now).ToList();
+        if (s.AllDay != "List")
+            foreach (var e in allDayToday) AllDayPanel.Children.Add(Chip(e, now));
+        ShowAllDay();
 
         var horizon = DateTime.Today.AddDays(s.DaysAhead + 1);
         var timed = events.Where(e => !e.AllDay && e.End > now && e.Start < horizon).OrderBy(e => e.Start).ToList();
@@ -206,10 +211,12 @@ public partial class MainWindow : Window
             foreach (var e in next) NextPanel.Children.Add(Row(e, 14));
         }
 
-        // Expanded view: today's all-day items, then everything after "next", grouped by day.
-        foreach (var e in events.Where(e => e.AllDay && e.Start <= now && e.End > now))
-            Agenda.Children.Add(Row(e, 13));
-        var rest = upcoming.Skip(s.NextCount);
+        // Expanded view: everything after "next", grouped by day, with each future day's all-day items first.
+        if (s.AllDay == "List")
+            foreach (var e in allDayToday) Agenda.Children.Add(Row(e, 13));
+        var laterAllDay = events.Where(e => e.AllDay && e.Start.Date > now.Date && e.Start < horizon);
+        var rest = upcoming.Skip(s.NextCount).Concat(laterAllDay)
+            .OrderBy(e => e.Start.Date).ThenBy(e => !e.AllDay).ThenBy(e => e.Start).AsEnumerable();
         if (s.MaxEvents > 0) rest = rest.Take(s.MaxEvents);
         DateTime day = now.Date;
         foreach (var e in rest)
@@ -255,6 +262,20 @@ public partial class MainWindow : Window
         return new Border { Background = card, CornerRadius = new(8), Padding = new(10, 7, 10, 9), Margin = new(0, 0, 0, 6), Child = sp };
     }
 
+    /// A compact pill for an all-day event; multi-day ones say which day you're on.
+    UIElement Chip(Ev e, DateTime now)
+    {
+        var days = (int)Math.Round((e.End.Date - e.Start.Date).TotalDays);
+        var label = days > 1 ? $"{e.Title}  ·  {(now.Date - e.Start.Date).Days + 1}/{days}" : e.Title;
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = B(e.Color), Margin = new(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = s.Width - 60 });
+        return new Border { Background = card, CornerRadius = new(9), Padding = new(8, 2, 9, 3), Margin = new(0, 0, 5, 4), Child = sp, ToolTip = label };
+    }
+
+    void ShowAllDay() => AllDayPanel.Visibility =
+        AllDayPanel.Children.Count > 0 && (s.AllDay == "Always" || s.AllDay == "Hover" && expanded) ? Visibility.Visible : Visibility.Collapsed;
+
     UIElement Row(Ev e, double size)
     {
         var dp = new DockPanel { Margin = new(0, 2, 0, 2) };
@@ -282,6 +303,7 @@ public partial class MainWindow : Window
     {
         expanded = true;
         Scroll.Visibility = Visibility.Visible;
+        ShowAllDay();
         Pin.Opacity = 0.7;
         Grip.Opacity = 0.5;
         FadeTo(1);
@@ -297,6 +319,7 @@ public partial class MainWindow : Window
     {
         expanded = false;
         Scroll.Visibility = Visibility.Collapsed;
+        ShowAllDay();
         Scroll.ScrollToTop();
         Pin.Opacity = 0;
         Grip.Opacity = 0;

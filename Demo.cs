@@ -11,6 +11,9 @@ static class Demo
         return new()
         {
             new("Mum's birthday", now.Date, now.Date.AddDays(1), true, "#F6BF26"),
+            new("☀ 12° / 19°", now.Date, now.Date.AddDays(1), true, "#4FC3F7"),
+            new("Lisbon trip", now.Date.AddDays(-1), now.Date.AddDays(4), true, "#F4511E"),
+            new("Bin day", now.Date.AddDays(2), now.Date.AddDays(3), true, "#9E9E9E"),
             E("Deep work: API design", -0.5, 1.5, "#7986CB"),
             E("Lunch", 1, 1, "#33B679"),
             E("1:1 with Sam", 2, 0.5, "#E67C73"),

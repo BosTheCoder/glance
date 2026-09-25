@@ -31,6 +31,7 @@ public class Settings
 
     // Content
     public List<string>? Calendars { get; set; }    // null = whatever is ticked in Google Calendar
+    public string AllDay { get; set; } = "Always";   // today's all-day events as chips: Always | Hover | List (old style, in the agenda only)
     public int NextCount { get; set; } = 1;         // upcoming events shown when collapsed
     public int MaxEvents { get; set; } = 10;        // events in the expanded list, 0 = all
     public int DaysAhead { get; set; } = 7;         // 0 = today only

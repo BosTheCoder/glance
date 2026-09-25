@@ -22,6 +22,7 @@
                                FontSize="12" Opacity="0" Cursor="Hand" ToolTip="Pin on top"/>
                     <TextBlock x:Name="Clock" Opacity="0.6" FontSize="12"/>
                 </DockPanel>
+                <WrapPanel x:Name="AllDayPanel" Margin="0,0,0,6"/>
                 <StackPanel x:Name="NowPanel"/>
                 <StackPanel x:Name="NextPanel" Margin="0,4,0,0"/>
                 <ScrollViewer x:Name="Scroll" Visibility="Collapsed" MaxHeight="320" Margin="0,10,0,0"

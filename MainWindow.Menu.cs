@@ -59,6 +59,7 @@ public partial class MainWindow
         m.Items.Add(Choice("Text size", new[] { 0.85, 1.0, 1.15, 1.3, 1.5 }.Select(o => ($"{o:P0}", o)), s.Scale, v => s.Scale = v));
         m.Items.Add(new Separator());
 
+        m.Items.Add(Choice("All-day events", new[] { ("Chips, always visible", "Always"), ("Chips, on hover", "Hover"), ("In the list", "List") }, s.AllDay, v => s.AllDay = v));
         m.Items.Add(Choice("Up next", new[] { 1, 2, 3 }.Select(n => ($"{n}", n)), s.NextCount, v => s.NextCount = v));
         m.Items.Add(Choice("Events when expanded", new[] { ("5", 5), ("10", 10), ("20", 20), ("All", 0) }, s.MaxEvents, v => s.MaxEvents = v));
         m.Items.Add(Choice("Look ahead", new[] { ("Today", 0), ("3 days", 3), ("1 week", 7), ("2 weeks", 14) }, s.DaysAhead, v =>

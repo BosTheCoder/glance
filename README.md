@@ -24,6 +24,7 @@
 ## Features
 
 - **Now and next at a glance.** A card for the current event with a time-left bar, plus the next event and a countdown.
+- **All-day events as chips** under the clock (weather, birthdays, trips with "day 2/5"), visible without hovering.
 - **Hover to expand** into a scrollable agenda for the days ahead. When you move away it shrinks back and the scroll resets.
 - **Fades when idle.** It's see-through while you work and turns solid when you hover it.
 - **Acrylic glass** in 7 themes, three glass strengths and any custom colour.
