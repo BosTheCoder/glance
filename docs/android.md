@@ -26,7 +26,8 @@ In the default Compact view:
 | Tap the pill | Expand it: clock, all-day chips (they wrap onto as many lines as they need, so you never scroll sideways), the current event, what's next and a scrollable agenda |
 | Tap the clock, or anywhere outside | Collapse it again |
 | Drag the grip in the card's bottom corner (the one away from the screen edge) | Resize the card: inwards makes it wider, down gives the agenda more height. It remembers the size |
-| Pinch the pill | Resize it: spread your fingers sideways to make it wider (long titles show more before they're cut short), up and down to show more or fewer Up next rows (1 to 7). It remembers both |
+| Pinch the pill | Resize it: spread your fingers sideways to set the pill's width (every line fills it, and long titles are cut short inside it), up and down to show more or fewer Up next rows (1 to 7). It remembers both; **Reset size** puts it back to fitting its text |
+| Tap an event (an Up next row in the pill, or the current event or an agenda row in the card) | Open that event in your calendar app. Tapping the pill anywhere else still expands it |
 | Drag the pill | Move it. It snaps to the nearest left or right edge and remembers where it was |
 | Throw it towards an edge, or drag it mostly off one | Dock it there as the side strip (below) |
 | Leave it for 3 seconds | It fades to the idle opacity. It never moves on its own |
@@ -47,7 +48,7 @@ Settings (same names as the Windows app):
 | Vibrate on reminders and heads-ups | On/off |
 | Start when the phone boots | On/off |
 | **Check for updates** (button, under Updates) | See [Updates](#updates) |
-| **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) and the pill back to its default width (up to 60% of the screen). Up next isn't changed |
+| **Reset size** (button) | Puts the card back to its default size (85% of the screen width, or up to 360dp in Full view; agenda up to 60% of the screen height) and the pill back to sizing itself to its text (up to 60% of the screen). Up next isn't changed |
 
 ### Full view
 
@@ -138,6 +139,7 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 - **Battery.** It runs as a foreground service so Android doesn't kill it. It wakes every 30 seconds, and at the exact moment something changes, and reads a local database. There's no network use.
 - **Why an overlay and not a bubble.** Android's Bubbles API only floats *conversation* notifications (a `MessagingStyle` notification tied to a sharing shortcut), so it can't host a calendar. A `TYPE_APPLICATION_OVERLAY` window with the "Display over other apps" permission is still the supported way to keep your own view on screen over other apps. The window never takes keyboard focus and passes touches outside itself straight to the app underneath, so Android 12's block on untrusted touches doesn't affect it. On Android 11+ it's built from a window context, as the platform docs ask for windows added from a service.
 - **Gesture navigation.** The pill stays between the status bar and the navigation bar. The side strip is widened by the back-gesture zone on its edge (read from the system's gesture insets on Android 11+) and its text starts past it, so dragging or tapping the text moves or opens the strip instead of going back.
+- **Opening events** uses the Calendar Provider's documented view intent (`ACTION_VIEW` on the event's `Events` URI, with the occurrence's begin and end times so a repeating event opens on the right day). Starting an activity from the floating window is allowed because Glance holds "Display over other apps", one of Android's background-activity-start exemptions. If no calendar app can open it, you get a short message instead.
 - **Throwing.** Glance measures the release speed with `VelocityTracker`. Anything faster than 800 dp/s counts as a throw. The glide is a low-stiffness, no-bounce `SpringAnimation` sideways and a `FlingAnimation` with friction up and down, both from AndroidX `dynamicanimation`.
 - **Android 14+** requires a declared type for every foreground service. None of the specific types fit a floating widget, so Glance uses `specialUse` with a short explanation in the manifest. Starting it from `BOOT_COMPLETED` is still allowed on Android 15 (the new boot restriction covers data sync, camera, media, phone call and microphone services, not `specialUse`). If Android refuses to start it anyway, Glance logs it and stops quietly instead of crashing.
 - **Reminder vibration** uses the notification vibration usage, which Android requires for vibrating from the background, so it follows your phone's notification vibration setting.

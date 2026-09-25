@@ -61,7 +61,7 @@ object Cal {
             }
         }
         val reminders = reminders(ctx, rows.map { it.first }.toSet())
-        return rows.map { (eventId, e) -> e.copy(reminders = reminders[eventId].orEmpty()) }
+        return rows.map { (eventId, e) -> e.copy(reminders = reminders[eventId].orEmpty(), eventId = eventId) }
     }
 
     private fun reminders(ctx: Context, eventIds: Set<Long>): Map<Long, List<Int>> {

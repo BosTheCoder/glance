@@ -10,9 +10,10 @@ static class Demo
         var now = DateTime.Now;
         var h = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0);
         var m = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0);
-        Ev E(string title, double startH, double lenH, string color) => new(title, h.AddHours(startH), h.AddHours(startH + lenH), false, color);
+        const string link = "https://calendar.google.com/calendar/r";   // clicking a demo event opens Google Calendar itself
+        Ev E(string title, double startH, double lenH, string color) => new(title, h.AddHours(startH), h.AddHours(startH + lenH), false, color, null, link);
         Ev M(string title, double startMin, double lenMin, string color, params int[] reminders) =>
-            new(title, m.AddMinutes(startMin), m.AddMinutes(startMin + lenMin), false, color, reminders);
+            new(title, m.AddMinutes(startMin), m.AddMinutes(startMin + lenMin), false, color, reminders, link);
         return new()
         {
             new("Mum's birthday", now.Date, now.Date.AddDays(1), true, "#F6BF26"),

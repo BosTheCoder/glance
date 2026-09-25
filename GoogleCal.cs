@@ -170,9 +170,12 @@ public class GoogleCal
         return JsonNode.Parse(await r.Content.ReadAsStringAsync())!;
     }
 
+    string? account;   // the signed-in address (the primary calendar's id), so event links open in the right account
+
     public async Task<List<Cal>> Calendars()
     {
         var j = await Get("users/me/calendarList?maxResults=250");
+        account = (string?)j["items"]!.AsArray().FirstOrDefault(c => (bool?)c!["primary"] == true)?["id"];
         return j["items"]!.AsArray().Select(c => new Cal(
             (string)c!["id"]!,
             (string?)c["summaryOverride"] ?? (string?)c["summary"] ?? "?",
@@ -193,7 +196,9 @@ public class GoogleCal
             var allDay = e["start"]!["date"] != null;
             var r = e["reminders"];
             var reminders = (bool?)r?["useDefault"] == false ? Popups(r?["overrides"]) : cal.DefaultReminders;
-            list.Add(new Ev((string?)e["summary"] ?? "(busy)", When(e["start"]!), When(e["end"]!), allDay, cal.Color, reminders));
+            var link = (string?)e["htmlLink"];
+            if (link != null && account != null) link += (link.Contains('?') ? "&" : "?") + "authuser=" + Uri.EscapeDataString(account);
+            list.Add(new Ev((string?)e["summary"] ?? "(busy)", When(e["start"]!), When(e["end"]!), allDay, cal.Color, reminders, link));
         }
         return list;
     }

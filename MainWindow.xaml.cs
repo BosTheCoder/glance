@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Media;
 using System.Windows.Media.Animation;
@@ -27,7 +28,6 @@ public partial class MainWindow : Window
     bool hovering;   // mouse is over the widget: full brightness
     double? shiftedFrom;   // original Top when expanding had to move the window up to stay on screen
     double widthShift;     // how far expanding moved it left, when it's narrower idle and sits on the right of the screen
-    double rowDrag;        // vertical drag on the idle grip not yet turned into a whole Up next row
     IntPtr hwnd;
     double alpha = 1, alphaTarget = 1;
     Brush card = Brushes.Transparent, track = Brushes.Transparent;
@@ -126,7 +126,7 @@ public partial class MainWindow : Window
         ContextMenu.Closed += (_, _) => { if (!IsMouseOver) collapseDelay.Start(); };
         ContextMenuOpening += (_, _) => BuildMenu();
         LocationChanged += (_, _) => { if (dragging) dragTrail.Add((Environment.TickCount64, Left, Top)); };
-        MouseLeftButtonDown += (_, _) =>
+        MouseLeftButtonDown += (_, down) =>
         {
             slide.Stop();
             var (x0, y0) = (Left, Top);
@@ -143,6 +143,11 @@ public partial class MainWindow : Window
                 if (side != null) { DockTo(side); return; }
             }
             else if (Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4) { Undock(); return; }   // a click brings it back
+            if (s.Docked == null && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && EventAt(down.OriginalSource) is { Link: string link })
+            {
+                Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });   // a click (not a drag) on an event opens it
+                return;
+            }
             else if (s.Docked switch { "Left" => Left < wa.Left + 60, "Right" => Left + ActualWidth > wa.Right - 60, _ => Top < wa.Top + 60 })
             { DockTo(s.Docked); return; }   // slid along the edge
             else { s.Docked = null; ApplyDock(); }   // pulled away from the edge: back to normal where it was dropped
@@ -167,14 +172,17 @@ public partial class MainWindow : Window
         // The idle size is set from the expanded view, WYSIWYG: sideways for its width, down/up for more or fewer Up next rows.
         IdleGrip.MouseEnter += (_, _) => IdleOutline.Opacity = 0.6;
         IdleGrip.MouseLeave += (_, _) => { if (!IdleGrip.IsDragging) IdleOutline.Opacity = 0; };
-        IdleGrip.DragStarted += (_, _) => rowDrag = 0;
-        IdleGrip.DragDelta += (_, e) =>
+        IdleGrip.DragDelta += (_, _) =>
         {
-            s.IdleWidth = Math.Clamp(IdleWidth() + e.HorizontalChange / s.Scale, 160, s.Width);
-            rowDrag += e.VerticalChange / s.Scale;
-            const double row = 24;   // about one Up next row
-            if (rowDrag > row && s.NextCount < 7) { s.NextCount++; rowDrag -= row; Render(); }
-            else if (rowDrag < -row && s.NextCount > 1) { s.NextCount--; rowDrag += row; Render(); }
+            // Follow the pointer itself, not drag deltas: rows reflow as the width changes, which would read as vertical movement.
+            var p = System.Windows.Input.Mouse.GetPosition(IdleLayer);
+            s.IdleWidth = Math.Clamp(p.X / s.Scale, 160, 900);
+            if (s.IdleWidth > s.Width) s.Width = s.IdleWidth.Value;   // stretching past the edge widens the expanded view too
+            ApplySize();
+            var bottom = NextPanel.TranslatePoint(new Point(0, NextPanel.ActualHeight), IdleLayer).Y;
+            var row = 24 * s.Scale;   // about one Up next row
+            if (p.Y > bottom + row * 0.7 && s.NextCount < 7) { s.NextCount++; Render(); }
+            else if (p.Y < bottom - row * 0.7 && s.NextCount > 1) { s.NextCount--; Render(); }
             PlaceIdleFrame();
         };
         IdleGrip.DragCompleted += (_, _) => { IdleOutline.Opacity = 0; s.Save(); if (!IsMouseOver) collapseDelay.Start(); };
@@ -388,7 +396,7 @@ public partial class MainWindow : Window
         if (endingSoon) { subText.Foreground = new SolidColorBrush(Amber); subText.Opacity = 1; }
         sp.Children.Add(subText);
         sp.Children.Add(bar);
-        return new Border { Background = card, CornerRadius = new(8), Padding = new(10, 7, 10, 9), Margin = new(0, 0, 0, 6), Child = sp };
+        return Clickable(new Border { Background = card, CornerRadius = new(8), Padding = new(10, 7, 10, 9), Margin = new(0, 0, 0, 6), Child = sp }, e);
     }
 
     /// A compact pill for an all-day event; multi-day ones say which day you're on.
@@ -407,7 +415,7 @@ public partial class MainWindow : Window
 
     UIElement Row(Ev e, double size)
     {
-        var dp = new DockPanel { Margin = new(0, 2, 0, 2) };
+        var dp = Clickable(new DockPanel { Margin = new(0, 2, 0, 2), Background = Brushes.Transparent }, e);   // transparent: clickable between the words too
         var dot = new Ellipse { Width = 8, Height = 8, Fill = B(e.Color), Margin = new(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
         var time = new TextBlock
         {
@@ -424,6 +432,21 @@ public partial class MainWindow : Window
         }
         dp.Children.Add(new TextBlock { Text = e.Title, FontSize = size, TextTrimming = TextTrimming.CharacterEllipsis });
         return dp;
+    }
+
+    /// Tag an element with its event so a click on it can open the event in Google Calendar.
+    static T Clickable<T>(T el, Ev e) where T : FrameworkElement
+    {
+        el.Tag = e;
+        if (e.Link != null) el.Cursor = System.Windows.Input.Cursors.Hand;
+        return el;
+    }
+
+    static Ev? EventAt(object? source)
+    {
+        for (var d = source as DependencyObject; d != null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is FrameworkElement { Tag: Ev e }) return e;
+        return null;
     }
 
     static string Dur(TimeSpan t) =>

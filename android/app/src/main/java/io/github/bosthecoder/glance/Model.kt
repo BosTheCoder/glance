@@ -11,6 +11,7 @@ data class Ev(
     val allDay: Boolean,
     val color: Int,
     val reminders: List<Int> = emptyList(),   // minutes before begin
+    val eventId: Long = 0,     // Events._ID, to open it in the calendar app
 )
 
 sealed class Alert {

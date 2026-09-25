@@ -55,10 +55,11 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 | Do this | To |
 | --- | --- |
 | Hover | Expand the agenda and make the widget solid. Right-click → **View → Full** keeps it expanded all the time |
+| Click an event | Open it in Google Calendar (on Android, in the Calendar app) |
 | Drag anywhere | Move it |
 | Throw it sideways or up, or push it mostly off an edge | Dock it to that edge as a strip (the top is Windows only). Click the strip to bring it back, or drag it along the edge |
 | Drag the bottom-right corner | Resize the width, and the list height while expanded |
-| Drag the small dashed corner (shows while expanded) | Resize what stays when you're not hovering: its width, and how many Up next rows it shows. On Android, pinch the pill |
+| Drag the small dashed corner (shows while expanded) | Resize what stays when you're not hovering: its width (narrower or wider), and how many Up next rows it shows. On Android, pinch the pill |
 | Click the pin | Keep it on top of other windows |
 | <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | Hide or show it from anywhere (change it in the menu). Running `Glance.exe` again also brings it back |
 | Right-click | Open settings: calendars, theme, glass, idle opacity, text size, how many events, how far ahead, 12/24h, refresh rate, taskbar, start with Windows, hide/show shortcut |

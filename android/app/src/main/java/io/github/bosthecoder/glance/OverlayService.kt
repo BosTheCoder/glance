@@ -5,10 +5,13 @@ import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ActivityNotFoundException
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.database.ContentObserver
 import android.graphics.Canvas
@@ -18,6 +21,7 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.hardware.display.DisplayManager
 import android.media.AudioAttributes
 import android.os.Build
@@ -47,6 +51,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -323,7 +328,7 @@ class OverlayService : Service() {
             gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE; setPadding(0, 0, 0, dp(4))
             addView(bannerGlyph)
             addView(bannerBell, LinearLayout.LayoutParams(dp(14), dp(14)))
-            addView(bannerText, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(6) })
+            addView(bannerText, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { marginStart = dp(6) })
         }
         dot = GradientDrawable().apply { shape = GradientDrawable.OVAL }
         title = text("", 14f, Color.WHITE, bold = true)
@@ -331,7 +336,7 @@ class OverlayService : Service() {
         val row = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(View(context).apply { background = dot }, LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(8) })
-            addView(title)
+            addView(title, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             addView(countdown, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) })
         }
         bar = Bar(this)
@@ -370,7 +375,7 @@ class OverlayService : Service() {
                 return super.dispatchTouchEvent(e)
             }
         }.apply {
-            addView(pill, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+            addView(pill, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
             addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
             addView(dock, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
             addView(grip, FrameLayout.LayoutParams(dp(28), dp(28)))
@@ -389,8 +394,8 @@ class OverlayService : Service() {
     private fun cardW() = prefs.cardWidth.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(220), maxOf(dp(220), maxCardW())) }
         ?: if (full) minOf((W * 0.85f).toInt(), dp(360)) else (W * 0.85f).toInt()
     /** The pill's width cap (titles ellipsize inside it): the pinch's, or 60% of the screen. */
-    private fun pillW() = pinchW ?: prefs.pillWidth.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(160), maxOf(dp(160), maxCardW())) }
-        ?: (W * 0.6f).toInt()
+    /** The pill's set width (from a pinch, live or saved), or null to size it to its content as before. */
+    private fun pillW(): Int? = pinchW ?: prefs.pillWidth.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(160), maxOf(dp(160), maxCardW())) }
     private fun maxCardW() = edges().let { W - it.left - it.right }
     /** The agenda's max height: the grip's, kept on screen, or 60% of the screen. */
     private fun listH() = prefs.listHeight.takeIf { it > 0 }?.let { dp(it).coerceIn(dp(120), maxOf(dp(120), edges().let { e -> H - e.top - e.bottom - dp(120) })) }
@@ -411,7 +416,7 @@ class OverlayService : Service() {
         (bannerRow.parent as? ViewGroup)?.removeView(bannerRow)
         if (form === card) card.addView(bannerRow, 0) else pill.addView(bannerRow, 0)
         for (v in listOf(pill, card, dock)) v.visibility = if (v === form) View.VISIBLE else View.GONE
-        lp.width = when { docked -> stripW(); expanded || full -> cardW(); else -> WRAP_CONTENT }
+        lp.width = when { docked -> stripW(); expanded || full -> cardW(); else -> pillW() ?: WRAP_CONTENT }
         grip.visibility = if (form === card) View.VISIBLE else View.GONE
         placeGrip()
         if (docked) {
@@ -513,7 +518,8 @@ class OverlayService : Service() {
         val heads = Plan.headsUp(events, now, prefs.headsUp)
         val e = cur.firstOrNull()
 
-        title.maxWidth = pillW() - dp(110)
+        // A set pill width is the pill's real width: rows fill it and ellipsize. Auto-size caps titles at 60% instead.
+        title.maxWidth = if (pillW() != null) Int.MAX_VALUE else (W * 0.6f).toInt() - dp(110)
         when {
             !Cal.granted(this) -> { title.text = "Grant calendar access"; countdown.text = ""; dot.setColor(AMBER) }
             e != null -> { title.text = e.title; countdown.text = "${dur(e.end - now)} left"; dot.setColor(e.color or 0xFF000000.toInt()) }
@@ -534,7 +540,7 @@ class OverlayService : Service() {
         bannerBell.visibility = if (b is Alert.Reminder || b is Alert.Coming) View.VISIBLE else View.GONE
         bannerBell.setImageResource(if (b is Alert.Coming) R.drawable.ic_clock else R.drawable.ic_bell)
         bannerBell.setColorFilter(if (b is Alert.Coming) AMBER else BLUE)
-        bannerText.maxWidth = title.maxWidth + dp(40)
+        bannerText.maxWidth = if (pillW() != null) Int.MAX_VALUE else title.maxWidth + dp(40)
         bannerText.text = when (b) {
             is Alert.Starting -> "Now: ${b.ev.title}"
             is Alert.Reminder -> "${b.ev.title} · ${whenText(b.ev.begin, now)}"
@@ -579,8 +585,32 @@ class OverlayService : Service() {
     }
 
     /** One "Up next" line in the pill: dot, start time, title. */
+    /** Pressed-state feedback for a tappable event, clipped to a rounded rect. */
+    private fun ripple(radiusDp: Int = 6) = RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), null,
+        GradientDrawable().apply { cornerRadius = dp(radiusDp).toFloat(); setColor(Color.WHITE) })
+
+    /**
+     * Opens the event in the calendar app (Calendar Provider's documented ACTION_VIEW on the event's URI; the
+     * begin/end extras pick the occurrence of a repeating one). Allowed from the overlay: Glance holds SYSTEM_ALERT_WINDOW.
+     */
+    private fun openEvent(e: Ev) {
+        // All-day times were moved to local midnight for display; the provider keeps them at UTC midnight.
+        fun t(ms: Long) = if (e.allDay) day(ms).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() else ms
+        val i = Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, e.eventId))
+            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, t(e.begin))
+            .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, t(e.end))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(i)
+            collapse()   // Compact: don't leave the card over the event
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(ui, "No calendar app to open this event", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun nextRow(e: Ev, now: Long) = LinearLayout(ui).apply {
         gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(5), 0, 0)
+        tag = e; background = ripple()   // the pill's own touch handler finds and presses it: see onTouch
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginEnd = dp(8) })
         addView(ui.text(if (day(e.begin) == day(now)) hm(e.begin) else fmt(e.begin, "EEE HH:mm"), 12f, 0x99FFFFFF.toInt()),
@@ -600,6 +630,7 @@ class OverlayService : Service() {
 
     private fun row(e: Ev) = LinearLayout(ui).apply {
         gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(3), 0, dp(3))
+        background = ripple(); setOnClickListener { openEvent(e) }
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(8) })
         addView(ui.text(if (e.allDay) "all day" else hm(e.begin), 12f, 0x99FFFFFF.toInt()), LinearLayout.LayoutParams(dp(48), WRAP_CONTENT))
@@ -611,6 +642,7 @@ class OverlayService : Service() {
         orientation = LinearLayout.VERTICAL
         background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(CARD) }
         setPadding(dp(10), dp(7), dp(10), dp(9))
+        foreground = ripple(8); setOnClickListener { openEvent(e) }
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) }
         addView(ui.text(e.title, 17f, Color.WHITE, bold = true))
         addView(ui.text("until ${hm(e.end)}  ·  ${dur(e.end - now)} left", 12f, 0xB3FFFFFF.toInt()))
@@ -805,8 +837,22 @@ class OverlayService : Service() {
     private var velocity: VelocityTracker? = null
     private var lastMove = 0L
     private val flingV by lazy { dp(DOCK_FLING).toFloat() }
+    private var pressedRow: View? = null   // an Up next row under the finger: a tap on it opens that event
+    private fun unpress() { pressedRow?.isPressed = false; pressedRow = null }
+
+    /** The pill's Up next row at screen point (x, y), if any. The pill handles its own touches, so rows can't be clickable. */
+    private fun nextRowAt(x: Float, y: Float): View? {
+        if (pill.visibility != View.VISIBLE) return null
+        val at = IntArray(2)
+        for (i in 0 until nextBox.childCount) {
+            val r = nextBox.getChildAt(i); r.getLocationOnScreen(at)
+            if (x >= at[0] && x < at[0] + r.width && y >= at[1] && y < at[1] + r.height) return r
+        }
+        return null
+    }
+
     private val longR = Runnable {
-        longFired = true
+        longFired = true; unpress()
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -829,14 +875,15 @@ class OverlayService : Service() {
     private val pinch by lazy {
         ScaleGestureDetector(ui, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
-                pinched = true; dragging = false
+                pinched = true; dragging = false; unpress()
                 h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel()
                 spanX0 = d.currentSpanX; spanY0 = d.currentSpanY
-                pinchStartW = pillW(); pinchStartCount = prefs.nextCount
+                pinchStartW = root.width; pinchStartCount = prefs.nextCount   // from the pill's actual width
                 return true
             }
             override fun onScale(d: ScaleGestureDetector): Boolean {
                 pinchW = (pinchStartW + (d.currentSpanX - spanX0).toInt()).coerceIn(dp(160), maxOf(dp(160), maxCardW()))
+                lp.width = pinchW!!; update()
                 pinchCount = (pinchStartCount + ((d.currentSpanY - spanY0) / dp(22)).toInt()).coerceIn(1, 7)
                 render()
                 return true
@@ -865,6 +912,7 @@ class OverlayService : Service() {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 touching = true; dragging = false; longFired = false; pinched = false
+                pressedRow = nextRowAt(e.rawX, e.rawY)?.also { it.isPressed = true }
                 downX = e.rawX; downY = e.rawY
                 velocity?.recycle(); velocity = VelocityTracker.obtain(); track(e)
                 h.removeCallbacks(fadeR)
@@ -874,7 +922,7 @@ class OverlayService : Service() {
             MotionEvent.ACTION_MOVE -> {
                 track(e); lastMove = e.eventTime
                 if (!dragging && !longFired && hypot(e.rawX - downX, e.rawY - downY) > slop) {
-                    dragging = true; h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel()
+                    dragging = true; h.removeCallbacks(longR); xSpring.cancel(); yFling.cancel(); unpress()
                     startX = lp.x; startY = lp.y; downX = e.rawX; downY = e.rawY
                 }
                 // Docked, a drag slides the strip along its edge until it's pulled inward: then it undocks and follows.
@@ -903,6 +951,7 @@ class OverlayService : Service() {
                     it.recycle()
                 }
                 velocity = null
+                val row = pressedRow; unpress()
                 when {
                     dragging && docked -> { lp.y = clampY(lp.y, root.height); update(); prefs.y = lp.y }
                     dragging -> {
@@ -912,6 +961,7 @@ class OverlayService : Service() {
                     }
                     !tap || longFired -> {}
                     docked -> { root.performClick(); undock(spring = true) }   // tap the strip: back out
+                    row != null -> { root.performClick(); openEvent(row.tag as Ev) }   // tap an Up next row
                     banner != null -> { root.performClick(); banner = null; render() }   // tap dismisses the alert
                     else -> { root.performClick(); if (!full) expand() }
                 }
