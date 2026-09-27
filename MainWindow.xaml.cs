@@ -393,7 +393,7 @@ public partial class MainWindow : Window
         foreach (var e in current)
         {
             NowPanel.Children.Add(Card(e, $"until {Time(e.End)}  ·  {Dur(e.End - now)} left", (now - e.Start) / (e.End - e.Start),
-                headsUp && e.End == change));
+                headsUp && e.End == change, expanded ? $"started {Time(e.Start)}  ·  {Dur(now - e.Start)} in" : null));
             if (Times(e, now) is { } times) NowPanel.Children.Add(times);
         }
         if (current.Count == 0 && (demo || g.SignedIn))
@@ -464,7 +464,7 @@ public partial class MainWindow : Window
         return bar;
     }
 
-    UIElement Card(Ev e, string sub, double progress, bool endingSoon = false)
+    UIElement Card(Ev e, string sub, double progress, bool endingSoon = false, string? started = null)
     {
         var bar = Bar(e, progress, endingSoon);
         var sp = new StackPanel();
@@ -472,6 +472,7 @@ public partial class MainWindow : Window
         var subText = Text(sub, 12, 0.7);
         if (endingSoon) { subText.Foreground = new SolidColorBrush(Amber); subText.Opacity = 1; }
         sp.Children.Add(subText);
+        if (started != null) sp.Children.Add(Text(started, 12, 0.5));   // expanded only: when it began and how long you've been at it
         sp.Children.Add(bar);
         return Clickable(new Border { Background = card, CornerRadius = new(8), Padding = new(10, 7, 10, 9), Margin = new(0, 0, 0, 6), Child = sp }, e);
     }

@@ -183,6 +183,8 @@ class OverlayService : Service() {
                 .setVibrationEnabled(true).setVibrationPattern(BUZZ)
                 .build())
         private val BUZZ = longArrayOf(0, 500, 200, 500)
+        private val ALARM = longArrayOf(0, 800, 400)   // repeats from the start until stopped
+        private const val STOP_ALARM = "stopAlarm"
     }
 
     private lateinit var wm: WindowManager
@@ -205,6 +207,12 @@ class OverlayService : Service() {
     private var locating = false
     private var events = emptyList<Ev>()
     private var banner: Alert? = null
+    private var alarm: Ev? = null   // the start it's buzzing for, like an alarm (Prefs.startAlarm)
+    private val stopAlarmR = Runnable { stopAlarm() }
+    private val vibrator by lazy {
+        if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
+        else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
+    }
     private var bannerUntil = 0L
     private var comingAt = -1L      // the change time the heads-up banner last fired for: once per change
     private var expanded = false
@@ -287,6 +295,7 @@ class OverlayService : Service() {
 
     override fun onBind(intent: Intent?) = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == STOP_ALARM) { stopAlarm(); return START_STICKY }   // the pop-up's Stop, or swiping it away
         // Started again from the app (see MainActivity.onResume): it's in the foreground now, so the location type can be added.
         if (running && ::wm.isInitialized) foreground()
         return START_STICKY
@@ -314,6 +323,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         running = false
         h.removeCallbacksAndMessages(null)
+        if (alarm != null) vibrator.cancel()
         io.shutdownNow()
         if (::lp.isInitialized) { xSpring.cancel(); yFling.cancel() }
         contentResolver.unregisterContentObserver(observer)
@@ -418,6 +428,7 @@ class OverlayService : Service() {
         root = object : FrameLayout(this) {
             private var cancelled = false
             override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+                if (alarm != null && e.actionMasked == MotionEvent.ACTION_DOWN) stopAlarm()   // touching the widget silences it too
                 // Full view: any touch, even one the agenda scroll takes, wakes the card and restarts the idle timer.
                 if (full && !docked) when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> { h.removeCallbacks(fadeR); if (faded) wake() }
@@ -561,15 +572,34 @@ class OverlayService : Service() {
                 duration = 260; repeatCount = if (a is Alert.Starting) 3 else 1; repeatMode = ValueAnimator.REVERSE; start()   // two pulses, or one
             }
         }
+        if (a is Alert.Starting && prefs.startAlarm != 0) ring(a.ev)
         val popped = (a is Alert.Starting || a is Alert.Coming && a.starting) && popUp(a, now)
-        if (a !is Alert.Starting && !popped && prefs.vibrate) {
-            val v = if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
-            else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
-            val once = VibrationEffect.createWaveform(BUZZ, -1)
-            // Background apps only vibrate with a notification, alarm or ringtone usage (Vibrator docs).
-            if (Build.VERSION.SDK_INT >= 33) v.vibrate(once, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_NOTIFICATION))
-            else @Suppress("DEPRECATION") v.vibrate(once, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build())
-        }
+        if (a !is Alert.Starting && !popped && prefs.vibrate) buzz(VibrationEffect.createWaveform(BUZZ, -1), alarm = false)
+    }
+
+    private fun buzz(effect: VibrationEffect, alarm: Boolean) {
+        // Background apps only vibrate with a notification, alarm or ringtone usage (Vibrator docs).
+        // Alarm usage also buzzes on silent and through Do Not Disturb when alarms are allowed.
+        if (Build.VERSION.SDK_INT >= 33) vibrator.vibrate(effect, VibrationAttributes.createForUsage(
+            if (alarm) VibrationAttributes.USAGE_ALARM else VibrationAttributes.USAGE_NOTIFICATION))
+        else @Suppress("DEPRECATION") vibrator.vibrate(effect, AudioAttributes.Builder().setUsage(
+            if (alarm) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION).build())
+    }
+
+    /** Buzz on repeat for [Prefs.startAlarm] seconds, or until the pop-up's Stop, swiping it away, or touching the widget. */
+    private fun ring(e: Ev) {
+        alarm = e
+        buzz(VibrationEffect.createWaveform(ALARM, 0), alarm = true)
+        h.removeCallbacks(stopAlarmR)
+        if (prefs.startAlarm > 0) h.postDelayed(stopAlarmR, prefs.startAlarm * 1000L)
+    }
+
+    private fun stopAlarm() {
+        val e = alarm ?: return
+        alarm = null
+        h.removeCallbacks(stopAlarmR)
+        vibrator.cancel()
+        NotificationManagerCompat.from(this).cancel("start", e.id.toInt())
     }
 
     /**
@@ -588,8 +618,12 @@ class OverlayService : Service() {
             .setContentIntent(PendingIntent.getActivity(this, e.id.toInt(), eventIntent(e), PendingIntent.FLAG_IMMUTABLE))
             .setAutoCancel(true)
             .setTimeoutAfter(if (a is Alert.Starting) 10 * MIN else e.begin - now)
-            .build()
-        try { nm.notify("start", e.id.toInt(), n) } catch (_: SecurityException) { return false }   // permission revoked just now
+        if (a is Alert.Starting && alarm == e) {
+            val stop = PendingIntent.getService(this, 0, Intent(this, OverlayService::class.java).setAction(STOP_ALARM), PendingIntent.FLAG_IMMUTABLE)
+            n.addAction(0, "Stop", stop).setDeleteIntent(stop).setAutoCancel(false)   // opening the event leaves Stop there
+            if (prefs.startAlarm < 0) n.setTimeoutAfter(0)   // until stopped: the Stop button stays until it's used
+        }
+        try { nm.notify("start", e.id.toInt(), n.build()) } catch (_: SecurityException) { return false }   // permission revoked just now
         return true
     }
 
@@ -893,6 +927,7 @@ class OverlayService : Service() {
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) }
         addView(ui.text(e.title, 17f, Color.WHITE, bold = true))
         addView(ui.text("until ${hm(e.end)}  ·  ${dur(e.end - now)} left", 12f, 0xB3FFFFFF.toInt()))
+        addView(ui.text("started ${hm(e.begin)}  ·  ${dur(now - e.begin)} in", 12f, 0x80FFFFFF.toInt()))
         addView(Bar(context).apply { set((now - e.begin).toFloat() / (e.end - e.begin), e.color or 0xFF000000.toInt()) },
             LinearLayout.LayoutParams(MATCH_PARENT, dp(3)).apply { topMargin = dp(6) })
     }

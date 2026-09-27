@@ -178,6 +178,8 @@ class MainActivity : ComponentActivity() {
         choice("Fade after", listOf(3, 5, 10, 30), { "$it s" }, prefs.fadeAfter) { prefs.fadeAfter = it }
         choice("Heads-up before a change", listOf(2, 5, 10), { "$it min" }, prefs.headsUp) { prefs.headsUp = it }
         toggle("Vibrate on reminders and heads-ups", prefs.vibrate) { prefs.vibrate = it }
+        choice("Keep buzzing when an event starts", listOf(0, 30, 60, 120, 300, -1),
+            { when (it) { 0 -> "Off"; -1 -> "Until stopped"; else -> if (it < 60) "$it s" else "${it / 60} min" } }, prefs.startAlarm) { prefs.startAlarm = it }
         list.addView(button("Pop-up when events start: sound and vibration", 0xFF1A1A1E.toInt()) {
             OverlayService.startsChannel(this)   // the settings page needs the channel to exist
             startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)

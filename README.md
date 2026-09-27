@@ -23,7 +23,7 @@
 
 ## Features
 
-- **Now and next at a glance.** A card for the current event with a time-left bar, plus the next event and a countdown.
+- **Now and next at a glance.** A card for the current event with a time-left bar (hover it for when it started and how long it has been going), plus the next event and a countdown.
 - **All-day events as chips** under the clock (weather, birthdays, trips with "day 2/5"), visible without hovering.
 - **Sleek alerts inside the widget**, not Windows toasts: amber when things are about to change, a green ▶ banner when an event starts, and a blue 🔔 banner for the event's own Google reminders. See [Alerts](#alerts).
 - **Hover to expand** into a scrollable agenda for the days ahead. When you move away it shrinks back and the scroll resets.

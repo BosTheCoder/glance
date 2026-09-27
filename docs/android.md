@@ -24,7 +24,7 @@ In the default Compact view:
 
 | Do this | To |
 | --- | --- |
-| Tap the pill | Expand it: clock, all-day chips (they wrap onto as many lines as they need, so you never scroll sideways), the current event, what's next and a scrollable agenda |
+| Tap the pill | Expand it: clock, all-day chips (they wrap onto as many lines as they need, so you never scroll sideways), the current event (with when it started and how long it has been going), what's next and a scrollable agenda |
 | Tap the clock, or anywhere outside | Collapse it again |
 | Drag the open card by its clock row (or its edges) | Move it. The list still scrolls. When it collapses, the pill lands where you left the card |
 | Drag the grip in the card's bottom corner (the one away from the screen edge) | Resize the card: inwards makes it wider, down gives the agenda more height. It remembers the size |
@@ -51,6 +51,7 @@ Settings (same names as the Windows app):
 | **Fade after** | 3/5/10/30 s (default 5 s): how long untouched before it fades to the idle opacity |
 | Heads-up before a change | 2/5/10 minutes |
 | Vibrate on reminders and heads-ups | On/off. Starts use the pop-up's own vibration instead |
+| **Keep buzzing when an event starts** | Off (default), 30 s, 1/2/5 min, or Until stopped: buzzes on repeat like an alarm, even on silent. Stop it with the pop-up's **Stop**, by swiping the pop-up away, or by touching the widget |
 | **Pop-up when events start** (button) | Android's settings for the pop-up: sound, vibration, on/off |
 | **Travel times** | On/off (default on): public transport times for "Travel" events, see [Travel times](#travel-times) |
 | **Get-ready time** | 0/3/5/10 min (default 5): taken off each departure to give the leave time |
