@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     bool busy, hotkeyOk = true;
     bool expanded;   // agenda showing: while hovered, or always in Full view
     bool hovering;   // mouse is over the widget: full brightness
+    bool showEarlier;   // today's finished events opened from the header; closes again when the widget goes idle
     DateTime hoveredSince;   // when it expanded under the mouse; clicks on events count only once it has settled
     double? shiftedFrom;   // original Top when expanding had to move the window up to stay on screen
     double widthShift;     // how far expanding moved it left, when it's narrower idle and sits on the right of the screen
@@ -161,6 +162,14 @@ public partial class MainWindow : Window
             s.Left = Left + widthShift; s.Top = Top; s.Save();
         };
         Pin.MouseLeftButtonDown += (_, e) => { e.Handled = true; Set(() => s.Pinned = !s.Pinned); };
+        EarlierToggle.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            showEarlier = !showEarlier;
+            Render();
+            if (showEarlier) Dispatcher.InvokeAsync(EarlierScroll.ScrollToEnd, DispatcherPriority.Loaded);   // the most recent sits just above Now
+            KeepOnScreen();
+        };
         Status.MouseLeftButtonDown += async (_, e) =>
         {
             if (!demo && !g.SignedIn) { e.Handled = true; await SignIn(); }
@@ -396,6 +405,17 @@ public partial class MainWindow : Window
                 headsUp && e.End == change, expanded ? $"started {Time(e.Start)}  ·  {Dur(now - e.Start)} in" : null));
             if (Times(e, now) is { } times) NowPanel.Children.Add(times);
         }
+        // Today's finished events: only while hovered, and the list only once you've asked for it.
+        var earlier = events.Where(e => !e.AllDay && e.Start >= now.Date && e.End <= now).OrderBy(e => e.Start).ToList();
+        EarlierToggle.Visibility = hovering && earlier.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        EarlierToggle.Inlines.Clear();
+        EarlierToggle.Inlines.Add(new System.Windows.Documents.Run($"Earlier  {earlier.Count}  "));
+        EarlierToggle.Inlines.Add(new System.Windows.Documents.Run(showEarlier ? "\uE70E" : "\uE70D") { FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 9 });   // ChevronUp / ChevronDown
+        Earlier.Children.Clear();
+        if (showEarlier)
+            foreach (var e in earlier) { var row = Row(e, 13); row.Opacity = 0.6; Earlier.Children.Add(row); }
+        EarlierScroll.Visibility = Earlier.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
         if (current.Count == 0 && (demo || g.SignedIn))
             NowPanel.Children.Add(Text(upcoming.Count > 0 && upcoming[0].Start.Date == now.Date ? $"Free until {Time(upcoming[0].Start)}" : "Free", 15, 0.8));
 
@@ -505,7 +525,7 @@ public partial class MainWindow : Window
         if (!e.AllDay)   // how long it lasts, for planning around it
         {
             var len = new TextBlock { Text = Dur(e.End - e.Start), Opacity = 0.5, FontSize = size - 2, Margin = new(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            if (LeaveAt(e, DateTime.Now) is DateTime leave)   // a travel event: when to leave matters more than how long
+            if (e.End > DateTime.Now && LeaveAt(e, DateTime.Now) is DateTime leave)   // a travel event: when to leave matters more than how long
             {
                 len.Text = null;
                 len.Inlines.Add(new System.Windows.Documents.Run("\uE7C0  ") { FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets") });   // Train
@@ -737,11 +757,12 @@ public partial class MainWindow : Window
         Canvas.SetLeft(IdleGrip, w - IdleGrip.Width); Canvas.SetTop(IdleGrip, bottom - IdleGrip.Height);
     }
 
-    /// The bottom of the last Up next row, in IdleLayer coordinates. Travel times under it only show expanded, so they don't count.
+    /// The bottom of the last Up next row, in IdleLayer coordinates. Travel times under it and the Earlier list above only show expanded, so they don't count.
     double IdleBottom()
     {
         var last = NextPanel.Children.OfType<FrameworkElement>().LastOrDefault(c => c is not WrapPanel) ?? NextPanel;
-        return last.TranslatePoint(new Point(0, last.ActualHeight), IdleLayer).Y;
+        var earlier = EarlierScroll.IsVisible ? (EarlierScroll.ActualHeight + EarlierScroll.Margin.Bottom) * s.Scale : 0;
+        return last.TranslatePoint(new Point(0, last.ActualHeight), IdleLayer).Y - earlier;
     }
 
     void Expand()
@@ -757,17 +778,20 @@ public partial class MainWindow : Window
         var wa0 = Native.WorkArea(this, hwnd);
         var grow = (s.Width - IdleWidth()) * s.Scale;
         if (grow > 0 && widthShift == 0 && s.View != "Full" && Left + ActualWidth / 2 > (wa0.Left + wa0.Right) / 2) { widthShift = grow; Left -= grow; }
-        // Grow upward instead of off the bottom of the screen.
-        Dispatcher.InvokeAsync(() =>
-        {
-            var wa = Native.WorkArea(this, hwnd);
-            if (Top + ActualHeight > wa.Bottom) { shiftedFrom ??= Top; Top = Math.Max(wa.Top, wa.Bottom - ActualHeight); }
-        }, DispatcherPriority.Loaded);
+        KeepOnScreen();
     }
+
+    /// Grow upward instead of off the bottom of the screen.
+    void KeepOnScreen() => Dispatcher.InvokeAsync(() =>
+    {
+        var wa = Native.WorkArea(this, hwnd);
+        if (Top + ActualHeight > wa.Bottom) { shiftedFrom ??= Top; Top = Math.Max(wa.Top, wa.Bottom - ActualHeight); }
+    }, DispatcherPriority.Loaded);
 
     void Collapse()
     {
         hovering = false;
+        showEarlier = false;
         ApplyView();
         banners.RemoveAll(a => a.Kind == AlertKind.Starting);   // you've hovered, so you've seen it
         Render();

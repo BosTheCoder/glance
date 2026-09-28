@@ -20,6 +20,8 @@ static class Demo
             new("☀ 12° / 19°", now.Date, now.Date.AddDays(1), true, "#4FC3F7"),
             new("Lisbon trip", now.Date.AddDays(-1), now.Date.AddDays(4), true, "#F4511E"),
             new("Bin day", now.Date.AddDays(2), now.Date.AddDays(3), true, "#9E9E9E"),
+            M("Call with the bank", -75, 20, "#E67C73"),   // already over: behind the Earlier toggle
+            M("Standup", -45, 15, "#7986CB"),
             M("Design sync", 0, 30, "#7986CB"),
             M("Coffee with Ana", 4, 30, "#33B679", 5),
             // Travel times: the office trip has no start of its own, so it sets off from "home", learned from the trip home.

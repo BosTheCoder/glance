@@ -216,6 +216,7 @@ class OverlayService : Service() {
     private var bannerUntil = 0L
     private var comingAt = -1L      // the change time the heads-up banner last fired for: once per change
     private var expanded = false
+    private var showEarlier = false   // today's finished events opened from the card; closes again when it collapses
     private var full = false        // View = Full: the card is always shown, never collapsed
     private var docked = false      // shrunk to the side strip on the [right] edge
     private var faded = false       // untouched for [Prefs.fadeAfter] s: at the idle (or side) opacity
@@ -513,7 +514,7 @@ class OverlayService : Service() {
     /** Compact (pill, expands on tap) or Full (the card, always), docked or not. Re-run when the setting changes. */
     private fun applyMode() {
         full = prefs.view == "Full"; docked = prefs.docked
-        expanded = false; faded = false
+        expanded = false; faded = false; showEarlier = false
         xSpring.cancel(); yFling.cancel(); h.removeCallbacks(fadeR)
         showForm()
         scroll.scrollTo(0, 0)
@@ -905,6 +906,12 @@ class OverlayService : Service() {
         layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) }
     }
 
+    /** "Earlier  N  ▼" at the top of the open card; tap to show or hide today's finished events. */
+    private fun earlierToggle(count: Int) = ui.text("Earlier  $count  ${if (showEarlier) "▲" else "▼"}", 11.5f, 0x99FFFFFF.toInt()).apply {
+        setPadding(dp(2), dp(2), dp(2), dp(6)); background = ripple()
+        setOnClickListener { showEarlier = !showEarlier; render() }
+    }
+
     private fun label(s: String, top: Int = 0) = ui.text(s, 11f, 0x8CFFFFFF.toInt()).apply {
         letterSpacing = 0.06f; setPadding(0, dp(top), 0, dp(2))
     }
@@ -954,6 +961,13 @@ class OverlayService : Service() {
             setPadding(0, 0, 0, dp(8))
             allDay.forEach { addView(chip(it, today), ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)) }
         })
+
+        // Today's finished events, in case one was missed: a toggle in the card, its list only once tapped.
+        val earlier = events.filter { !it.allDay && it.end <= now && day(it.begin) == today }.sortedBy { it.begin }
+        if (earlier.isNotEmpty()) {
+            body.addView(earlierToggle(earlier.size))
+            if (showEarlier) earlier.forEach { body.addView(row(it, now).apply { alpha = 0.6f }) }
+        }
 
         cur.forEach { body.addView(nowCard(it, now)); timesRow(it, now)?.let(body::addView) }
         if (cur.isEmpty()) body.addView(ui.text(freeText(up, now), 15f, 0xCCFFFFFF.toInt()).apply { setPadding(0, 0, 0, dp(4)) })
@@ -1070,6 +1084,7 @@ class OverlayService : Service() {
     private fun collapse() {
         if (!expanded) return
         expanded = false
+        showEarlier = false
         showForm()
         scroll.scrollTo(0, 0)
         lp.gravity = side()

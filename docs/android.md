@@ -30,6 +30,7 @@ In the default Compact view:
 | Drag the grip in the card's bottom corner (the one away from the screen edge) | Resize the card: inwards makes it wider, down gives the agenda more height. It remembers the size |
 | Pinch the pill | Resize it: spread your fingers sideways to set the pill's width (every line fills it, and long titles are cut short inside it), up and down to show more or fewer Up next rows (1 to 7). It remembers both; **Reset size** puts it back to fitting its text |
 | Tap an event in the card (the current event or an agenda row) | Open that event in your calendar app. Only the open card does this, so a tap on the pill can't open one by accident: tapping the pill expands it |
+| Tap **Earlier N** at the top of the open card | Show today's finished events, in case you missed one. It closes again when you collapse the card |
 | Drag the pill | Move it. It stays exactly where you let go (kept on screen) and remembers the spot |
 | Throw it towards an edge, or drag it mostly off one | Dock it there as the side strip (below). Only a real flick or a push mostly off the edge docks it; a slow drag never does |
 | Leave it for a few seconds (**Fade after**) | It fades to the idle opacity. It never moves on its own |
