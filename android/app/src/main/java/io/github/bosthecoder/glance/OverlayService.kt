@@ -831,6 +831,7 @@ class OverlayService : Service() {
         pillBg.setStroke(dp(1), rim); cardBg.setStroke(dp(1), rim); dockBg.setStroke(dp(1), rim)
 
         nextBox.removeAllViews()
+        if (!full) cur.drop(1).forEach { nextBox.addView(nowRow(it, now)) }   // the rest of what's on now, under the first
         if (!full) Plan.next(events, now, pinchCount ?: prefs.nextCount).forEach { nextBox.addView(nextRow(it, now)) }
 
         // An alert brings it to full opacity (docked too: it stays docked); otherwise it fades after 3 s.
@@ -899,6 +900,15 @@ class OverlayService : Service() {
             LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(8) })
         addView(ui.text(e.title, 12.5f, Color.WHITE).apply { maxWidth = title.maxWidth }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         addView(leaveText(e, now) ?: length(e))
+    }
+
+    /** A second (third...) event on now in the pill: dot, title, time left. */
+    private fun nowRow(e: Ev, now: Long) = LinearLayout(ui).apply {
+        gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(5), 0, 0)
+        addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
+            LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(8) })
+        addView(ui.text(e.title, 14f, Color.WHITE, bold = true).apply { maxWidth = title.maxWidth }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        addView(ui.text("${dur(e.end - now)} left", 12f, 0xB3FFFFFF.toInt()), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) })
     }
 
     /** Muted "30m" / "1h 15m" at the end of an upcoming row. The title before it takes weight 1, so it ellipsizes first. */

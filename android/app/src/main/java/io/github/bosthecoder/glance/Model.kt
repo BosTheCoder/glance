@@ -34,8 +34,11 @@ object Plan {
     /** The "Up next" rows: the first [count] upcoming timed events (Windows `NextCount`). */
     fun next(events: List<Ev>, now: Long, count: Int) = upcoming(events, now).take(count.coerceIn(1, 7))
 
-    /** Side-strip rows: what's on now (if anything), then upcoming timed events; [count] rows in all. */
-    fun strip(events: List<Ev>, now: Long, count: Int) = (current(events, now).take(1) + upcoming(events, now)).take(count.coerceIn(1, 5))
+    /** Side-strip rows: everything on now, then upcoming timed events up to [count] rows in all (on-now rows are never cut). */
+    fun strip(events: List<Ev>, now: Long, count: Int): List<Ev> {
+        val cur = current(events, now)
+        return cur + upcoming(events, now).take((count.coerceIn(1, 5) - cur.size).coerceAtLeast(0))
+    }
 
     /** When the pill's content next changes: the current event ends or the next one starts. */
     fun nextChange(events: List<Ev>, now: Long): Long? =

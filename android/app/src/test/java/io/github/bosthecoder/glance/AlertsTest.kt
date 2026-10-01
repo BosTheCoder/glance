@@ -7,7 +7,7 @@ import org.junit.Test
 
 // Fails if: the heads-up window is computed from the wrong edge, all-day events leak into now/next,
 // alerts replay after a restart, a reminder fires twice, Up next shows the wrong count/order,
-// the side strip shows all-day events, a release docks when it shouldn't (or the wrong way),
+// the side strip shows all-day events or hides one of several on-now events, a release docks when it shouldn't (or the wrong way),
 // the heads-up says Ending when something starts at that moment, or a release tag compares as text.
 class AlertsTest {
     private val t0 = 1_800_000_000_000L
@@ -40,6 +40,9 @@ class AlertsTest {
         assertEquals(listOf(meeting), Plan.strip(events, t0, 1))
         val tomorrow = ev(31, 24 * 60, 24 * 60, allDay = true)
         assertEquals(listOf(lunch), Plan.strip(events + tomorrow, meeting.end, 5))   // free: upcoming only, never all-day
+        val overlap = ev(4, -10, 30)                                     // on at the same time as the meeting
+        assertEquals(listOf(meeting, overlap), Plan.strip(events + overlap, t0, 1))         // every on-now event, even past count
+        assertEquals(listOf(meeting, overlap, lunch), Plan.strip(events + overlap, t0, 3))
     }
 
     @Test fun dockOnFastThrowOrWhenMostlyOffScreen() {
