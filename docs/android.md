@@ -13,6 +13,7 @@ It reads the calendars your phone already syncs from your Google account, so the
    - **Display over other apps**. This opens a system screen: find Glance and switch it on, then go back.
    - **Notifications** (Android 13+). You get the quiet "Glance is floating" one that keeps it running, and the pop-ups when events start.
    - **Full screen when events start** (Android 14+, only if Android hasn't already allowed it). This opens the "Full screen notifications" page: switch Glance on and go back.
+   - **Change events (snooze, won't do)**, optional. Needed for the Snooze and Won't do buttons on the start screen.
    - **Location (for travel times)**, optional. Travel times then start from where the phone is (see [Travel times](#travel-times)).
 4. Tick the calendars you want. By default it picks the ones that are visible in your calendar app.
 5. Tap **Start floating widget**.
@@ -55,6 +56,7 @@ Settings (same names as the Windows app):
 | Vibrate on reminders and heads-ups | On/off. Starts use the pop-up's own vibration instead |
 | **Keep buzzing when an event starts** | Off (default), 30 s, 1/2/5 min, or Until stopped: buzzes on repeat like an alarm, even on silent. Stop it with the pop-up's **Stop**, by swiping the pop-up away, or by touching the widget |
 | **Fill the screen when an event starts** | On (default): a full-screen "Now: *title*" page, over the lock screen too (see [Alerts](#alerts)) |
+| **Action history** (button) | Every snooze and won't do, newest first, with **Revert** (see [Snooze and Won't do](#snooze-and-wont-do)) |
 | **Pop-up when events start** (button) | Android's settings for the pop-up: sound, vibration, on/off |
 | **Travel times** | On/off (default on): public transport times for "Travel" events, see [Travel times](#travel-times) |
 | **Get-ready time** | 0/3/5/10 min (default 5): taken off each departure to give the leave time |
@@ -89,7 +91,18 @@ The alerts show inside the pill, card or side strip, and each kind has its own c
 
 **Pop-up for starts.** "*title* in 5m" at the heads-up and "Now: *title*" when it starts show as a notification that pops up over whatever is open, with the phone's notification sound and a long double buzz. Silent mode silences it and vibrate mode only buzzes. The "now" one replaces the "in 5m" one, and tapping it opens the event. Change the sound, vibration or lock-screen display, or turn it off, with **Pop-up when events start** in settings (Android's page for the "Events starting" channel). With notifications off, Glance just vibrates.
 
-**Full screen for starts.** When an event starts, a full-screen page shows "▶ NOW", the title, its times and two buttons: **Open event** and **Dismiss** (Dismiss also stops "Keep buzzing"). It works like an alarm clock's: if the phone is locked or asleep, the screen turns on and the page shows over the lock screen; if you're using the phone, it opens over whatever is open. The floating widget hides while it's up. Turn it off with **Fill the screen when an event starts**. On Android 14+ it needs "Full screen notifications" allowed for Glance; sideloaded apps usually have it already, and the setup screen shows a Grant button if not.
+**Full screen for starts.** When an event starts, a full-screen page shows "▶ NOW", the title, its times, **Open event**, **Snooze** (15m, 30m, 1h), **Won't do** and **Dismiss** (Dismiss also stops "Keep buzzing"; see [Snooze and Won't do](#snooze-and-wont-do)). It works like an alarm clock's: if the phone is locked or asleep, the screen turns on and the page shows over the lock screen; if you're using the phone, it opens over whatever is open. The floating widget hides while it's up. Turn it off with **Fill the screen when an event starts**. On Android 14+ it needs "Full screen notifications" allowed for Glance; sideloaded apps usually have it already, and the setup screen shows a Grant button if not.
+
+### Snooze and Won't do
+
+The full-screen start page also has **Snooze 15m / 30m / 1h** and **Won't do**. They change your calendar, and the change syncs to Google:
+
+- **Snooze** moves the event later by that much and keeps its length. Its start alert fires again at the new time.
+- **Won't do** deletes it.
+- **Repeating events** only ever change the one occurrence: it's moved or cancelled as an exception, the same as "this event" in Google Calendar. The rest of the series stays as it was. An occurrence of a repeating event created in the last minute or so is refused ("hasn't synced yet") until it has reached Google, because changing it before then can hide the series' other occurrences.
+- Events where you're a guest rather than the organiser change on the phone, but Google may put them back on the next sync.
+
+**Action history** (in settings) lists every snooze, won't do and revert, including ones that failed and why. **Revert** undoes one: a moved event goes back to its old time, a cancelled occurrence comes back. A deleted one-off event is recreated from a copy taken before it was deleted (title, times, location, description, colour, reminders). It comes back as a new event, so guests and video-call links aren't restored. The history keeps the last 300 actions on the phone (`history.json` in Glance's app storage) and each action is also written to logcat under the `Glance` tag.
 
 Each alert fires once. After a restart it only fires alerts that were due in the last 2 minutes, so it doesn't replay the morning's.
 
@@ -153,6 +166,8 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
 | `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/throw-to-dock, alerts |
 | `main/.../StartScreen.kt` | The full-screen "Now" page for starts: `showWhenLocked` and `turnScreenOn`, opened by the start notification's full-screen intent when locked, or straight from the service when the phone is in use |
+| `main/.../Actions.kt` | Snooze, Won't do and Revert against the calendar provider (exceptions for repeating events), and the action history (`history.json`) |
+| `main/.../HistoryActivity.kt` | The Action history screen with Revert |
 | `main/.../MainActivity.kt` | Setup screen (edge to edge): permissions, calendar picker, settings, Start/Stop |
 | `main/.../Update.kt` | Check for updates: the GitHub releases API, the SHA-256 check and the `PackageInstaller` session |
 | `main/.../BootReceiver.kt` | Restarts the service after a reboot if "start on boot" is on |

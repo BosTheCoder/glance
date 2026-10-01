@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Snooze and Won't do on the start screen move or cancel the event (Actions.kt). -->
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -33,6 +35,8 @@
 
         <activity android:name=".StartScreen" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true"
             android:launchMode="singleInstance" android:taskAffinity="" android:excludeFromRecents="true" />
+
+        <activity android:name=".HistoryActivity" android:exported="false" />
 
         <service
             android:name=".OverlayService"

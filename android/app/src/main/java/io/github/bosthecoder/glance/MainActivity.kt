@@ -158,6 +158,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 34 && prefs.fullScreen) permission("Full screen when events start", canFullScreen(this)) {
             overlaySettings.launch(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:$packageName".toUri()))
         }
+        permission("Change events (snooze, won't do)", canWrite(this)) { askPermission.launch(Manifest.permission.WRITE_CALENDAR) }
         permission("Location (for travel times)", canLocate(this)) {
             askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
@@ -188,6 +189,9 @@ class MainActivity : ComponentActivity() {
             OverlayService.startsChannel(this)   // the settings page needs the channel to exist
             startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, packageName).putExtra(Settings.EXTRA_CHANNEL_ID, OverlayService.STARTS))
+        }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
+        list.addView(button("Action history (snoozes, won't dos, revert)", 0xFF1A1A1E.toInt()) {
+            startActivity(Intent(this, HistoryActivity::class.java))
         }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
         toggle("Travel times", prefs.travel) { prefs.travel = it }
         choice("Get-ready time", listOf(0, 3, 5, 10), { "$it min" }, prefs.travelBuffer) { prefs.travelBuffer = it }
