@@ -12,6 +12,7 @@ It reads the calendars your phone already syncs from your Google account, so the
    - **Calendar access**, so it can read your events.
    - **Display over other apps**. This opens a system screen: find Glance and switch it on, then go back.
    - **Notifications** (Android 13+). You get the quiet "Glance is floating" one that keeps it running, and the pop-ups when events start.
+   - **Full screen when events start** (Android 14+, only if Android hasn't already allowed it). This opens the "Full screen notifications" page: switch Glance on and go back.
    - **Location (for travel times)**, optional. Travel times then start from where the phone is (see [Travel times](#travel-times)).
 4. Tick the calendars you want. By default it picks the ones that are visible in your calendar app.
 5. Tap **Start floating widget**.
@@ -53,6 +54,7 @@ Settings (same names as the Windows app):
 | Heads-up before a change | 2/5/10 minutes |
 | Vibrate on reminders and heads-ups | On/off. Starts use the pop-up's own vibration instead |
 | **Keep buzzing when an event starts** | Off (default), 30 s, 1/2/5 min, or Until stopped: buzzes on repeat like an alarm, even on silent. Stop it with the pop-up's **Stop**, by swiping the pop-up away, or by touching the widget |
+| **Fill the screen when an event starts** | On (default): a full-screen "Now: *title*" page, over the lock screen too (see [Alerts](#alerts)) |
 | **Pop-up when events start** (button) | Android's settings for the pop-up: sound, vibration, on/off |
 | **Travel times** | On/off (default on): public transport times for "Travel" events, see [Travel times](#travel-times) |
 | **Get-ready time** | 0/3/5/10 min (default 5): taken off each departure to give the leave time |
@@ -86,6 +88,8 @@ The alerts show inside the pill, card or side strip, and each kind has its own c
 | One of the event's own reminders is due | A **blue** bell banner, "*title* · in 10m", with a double vibration. It stays until you tap it or the event starts |
 
 **Pop-up for starts.** "*title* in 5m" at the heads-up and "Now: *title*" when it starts show as a notification that pops up over whatever is open, with the phone's notification sound and a long double buzz. Silent mode silences it and vibrate mode only buzzes. The "now" one replaces the "in 5m" one, and tapping it opens the event. Change the sound, vibration or lock-screen display, or turn it off, with **Pop-up when events start** in settings (Android's page for the "Events starting" channel). With notifications off, Glance just vibrates.
+
+**Full screen for starts.** When an event starts, a full-screen page shows "▶ NOW", the title, its times and two buttons: **Open event** and **Dismiss** (Dismiss also stops "Keep buzzing"). It works like an alarm clock's: if the phone is locked or asleep, the screen turns on and the page shows over the lock screen; if you're using the phone, it opens over whatever is open. The floating widget hides while it's up. Turn it off with **Fill the screen when an event starts**. On Android 14+ it needs "Full screen notifications" allowed for Glance; sideloaded apps usually have it already, and the setup screen shows a Grant button if not.
 
 Each alert fires once. After a restart it only fires alerts that were due in the last 2 minutes, so it doesn't replay the morning's.
 
@@ -148,6 +152,7 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 | `main/.../Model.kt` | Pure Kotlin, no Android: the `Ev` model, now/next, the side strip's rows, heads-up and its banner wording (`Plan`), where a release docks (`dockSide`), which alerts are due (`AlertTracker`), `isNewer()` for release tags, `dur()` |
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
 | `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/throw-to-dock, alerts |
+| `main/.../StartScreen.kt` | The full-screen "Now" page for starts: `showWhenLocked` and `turnScreenOn`, opened by the start notification's full-screen intent when locked, or straight from the service when the phone is in use |
 | `main/.../MainActivity.kt` | Setup screen (edge to edge): permissions, calendar picker, settings, Start/Stop |
 | `main/.../Update.kt` | Check for updates: the GitHub releases API, the SHA-256 check and the `PackageInstaller` session |
 | `main/.../BootReceiver.kt` | Restarts the service after a reboot if "start on boot" is on |

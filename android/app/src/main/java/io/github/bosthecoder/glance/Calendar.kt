@@ -2,6 +2,7 @@ package io.github.bosthecoder.glance
 
 import android.Manifest
 import android.content.ContentUris
+import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -94,6 +95,8 @@ class Prefs(ctx: Context) {
     var vibrate: Boolean get() = sp.getBoolean("vibrate", true); set(v) = sp.edit { putBoolean("vibrate", v) }
     /** When an event starts, keep buzzing like an alarm for this many seconds: 0 = no alarm, -1 = until stopped. */
     var startAlarm: Int get() = sp.getInt("startAlarm", 0); set(v) = sp.edit { putInt("startAlarm", v) }
+    /** When an event starts, fill the screen with it (StartScreen), over the lock screen too. */
+    var fullScreen: Boolean get() = sp.getBoolean("fullScreen", true); set(v) = sp.edit { putBoolean("fullScreen", v) }
     /** Travel events: look up public transport times (docs/travel.md), leaving [travelBuffer] min to get ready. */
     var travel: Boolean get() = sp.getBoolean("travel", true); set(v) = sp.edit { putBoolean("travel", v) }
     var travelBuffer: Int get() = sp.getInt("travelBuffer", 5); set(v) = sp.edit { putInt("travelBuffer", v) }
@@ -124,5 +127,7 @@ fun canOverlay(ctx: Context) = Settings.canDrawOverlays(ctx)
 fun canLocate(ctx: Context) =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+/** Android 14+ lets only alarm and calling apps use full-screen intents unless the user allows it ("Full screen notifications"). */
+fun canFullScreen(ctx: Context) = Build.VERSION.SDK_INT < 34 || ctx.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
 fun canNotify(ctx: Context) = Build.VERSION.SDK_INT < 33 ||
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

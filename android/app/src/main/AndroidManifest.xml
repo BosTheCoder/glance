@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The start notification opens StartScreen over the lock screen. Android 14+ asks the user once (Settings > Full screen). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Travel times start from where the phone is. Foreground-only: the service adds the location type while the app is open. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -28,6 +30,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".StartScreen" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true"
+            android:launchMode="singleInstance" android:taskAffinity="" android:excludeFromRecents="true" />
 
         <service
             android:name=".OverlayService"

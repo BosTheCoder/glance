@@ -3,6 +3,7 @@ package io.github.bosthecoder.glance
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
+import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ActivityNotFoundException
@@ -161,6 +162,9 @@ class MaxScroll(ctx: Context, var maxH: Int) : ScrollView(ctx) {
 class OverlayService : Service() {
     companion object {
         var running = false; private set
+        private var self: OverlayService? = null
+        /** Hide the widget while StartScreen fills the screen, so it doesn't sit on top of the title. */
+        fun hide(hidden: Boolean) { self?.hideRoot(hidden) }
         fun start(ctx: Context) {
             try {
                 ContextCompat.startForegroundService(ctx, Intent(ctx, OverlayService::class.java))
@@ -184,7 +188,7 @@ class OverlayService : Service() {
                 .build())
         private val BUZZ = longArrayOf(0, 500, 200, 500)
         private val ALARM = longArrayOf(0, 800, 400)   // repeats from the start until stopped
-        private const val STOP_ALARM = "stopAlarm"
+        const val STOP_ALARM = "stopAlarm"
     }
 
     private lateinit var wm: WindowManager
@@ -304,7 +308,7 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        running = true
+        running = true; self = this
         prefs = Prefs(this)
         if (!foreground() || !canOverlay(this)) { stopSelf(); return }
         ui = if (Build.VERSION.SDK_INT >= 30)
@@ -321,8 +325,10 @@ class OverlayService : Service() {
         reload()
     }
 
+    private fun hideRoot(hidden: Boolean) { if (::root.isInitialized) root.visibility = if (hidden) View.INVISIBLE else View.VISIBLE }
+
     override fun onDestroy() {
-        running = false
+        running = false; self = null
         h.removeCallbacksAndMessages(null)
         if (alarm != null) vibrator.cancel()
         io.shutdownNow()
@@ -575,6 +581,10 @@ class OverlayService : Service() {
         }
         if (a is Alert.Starting && prefs.startAlarm != 0) ring(a.ev)
         val popped = (a is Alert.Starting || a is Alert.Coming && a.starting) && popUp(a, now)
+        // In use: open the full-screen page straight away (the overlay permission allows starting it from here).
+        // Locked or screen off: the notification's full-screen intent does it, as an alarm clock's does.
+        if (a is Alert.Starting && prefs.fullScreen && getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false)
+            runCatching { startActivity(StartScreen.intent(this, a.ev, eventIntent(a.ev))) }
         if (a !is Alert.Starting && !popped && prefs.vibrate) buzz(VibrationEffect.createWaveform(BUZZ, -1), alarm = false)
     }
 
@@ -624,6 +634,8 @@ class OverlayService : Service() {
             n.addAction(0, "Stop", stop).setDeleteIntent(stop).setAutoCancel(false)   // opening the event leaves Stop there
             if (prefs.startAlarm < 0) n.setTimeoutAfter(0)   // until stopped: the Stop button stays until it's used
         }
+        if (a is Alert.Starting && prefs.fullScreen) n.setFullScreenIntent(PendingIntent.getActivity(this, e.id.toInt(),
+            StartScreen.intent(this, e, eventIntent(e)), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT), true)
         try { nm.notify("start", e.id.toInt(), n.build()) } catch (_: SecurityException) { return false }   // permission revoked just now
         return true
     }
