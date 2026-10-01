@@ -583,8 +583,11 @@ class OverlayService : Service() {
         val popped = (a is Alert.Starting || a is Alert.Coming && a.starting) && popUp(a, now)
         // In use: open the full-screen page straight away (the overlay permission allows starting it from here).
         // Locked or screen off: the notification's full-screen intent does it, as an alarm clock's does.
-        if (a is Alert.Starting && prefs.fullScreen && getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false)
-            runCatching { startActivity(StartScreen.intent(this, a.ev, eventIntent(a.ev))) }
+        if (a is Alert.Starting && prefs.fullScreen) {
+            val i = StartScreen.intent(this, a.ev, eventIntent(a.ev))
+            StartScreen.enqueue(i)
+            if (getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false) runCatching { startActivity(i) }
+        }
         if (a !is Alert.Starting && !popped && prefs.vibrate) buzz(VibrationEffect.createWaveform(BUZZ, -1), alarm = false)
     }
 
