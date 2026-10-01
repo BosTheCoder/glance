@@ -44,7 +44,7 @@ Settings (same names as the Windows app):
 | Setting | Options |
 | --- | --- |
 | **View** | **Compact** (default): the pill above, which expands on tap. **Full**: the expanded card, all the time |
-| **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now (if several events overlap, the pill shows each of them with its time left) (pinching the pill up and down changes it too). The expanded card lists the same number under NEXT. Every upcoming timed event, here and in the agenda, shows how long it lasts ("30m", "1h 15m") at the end of its row |
+| **Up next** | 1 to 7 (default 1): how many upcoming events the pill lists under what's on now (if several events overlap, the pill shows each of them with its time left and progress bar) (pinching the pill up and down changes it too). The expanded card lists the same number under NEXT. Every upcoming timed event, here and in the agenda, shows how long it lasts ("30m", "1h 15m") at the end of its row |
 | **Items at the side** | 1 to 5 (default 2): rows in the side strip |
 | **Opacity at the side** | 25/50/75/100% (default 75%): the strip's opacity while you're not touching it |
 | **Opacity when active** | 50/75/90/100% (default 100%, solid): the glass behind the pill, card and strip while you use it |

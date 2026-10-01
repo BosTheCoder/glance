@@ -902,13 +902,18 @@ class OverlayService : Service() {
         addView(leaveText(e, now) ?: length(e))
     }
 
-    /** A second (third...) event on now in the pill: dot, title, time left. */
+    /** A second (third...) event on now in the pill: dot, title, time left, and its own bar like the first. */
     private fun nowRow(e: Ev, now: Long) = LinearLayout(ui).apply {
-        gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(5), 0, 0)
-        addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
-            LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(8) })
-        addView(ui.text(e.title, 14f, Color.WHITE, bold = true).apply { maxWidth = title.maxWidth }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        addView(ui.text("${dur(e.end - now)} left", 12f, 0xB3FFFFFF.toInt()), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) })
+        orientation = LinearLayout.VERTICAL; setPadding(0, dp(7), 0, 0)
+        addView(LinearLayout(ui).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
+                LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(8) })
+            addView(ui.text(e.title, 14f, Color.WHITE, bold = true).apply { maxWidth = title.maxWidth }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(ui.text("${dur(e.end - now)} left", 12f, 0xB3FFFFFF.toInt()), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(8) })
+        })
+        addView(Bar(ui).apply { set((now - e.begin).toFloat() / (e.end - e.begin), e.color or 0xFF000000.toInt()) },
+            LinearLayout.LayoutParams(MATCH_PARENT, dp(3)).apply { topMargin = dp(6) })
     }
 
     /** Muted "30m" / "1h 15m" at the end of an upcoming row. The title before it takes weight 1, so it ellipsizes first. */
