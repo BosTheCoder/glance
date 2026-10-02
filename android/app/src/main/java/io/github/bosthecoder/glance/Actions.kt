@@ -17,7 +17,7 @@ fun canWrite(ctx: Context) =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
 /**
- * Snooze and Won't do, written to the calendar provider (which syncs them to Google), each logged to history.json so
+ * Move (delay or start now) and Won't do (Skip), written to the calendar provider (which syncs them to Google), each logged to history.json so
  * it can be reverted. A repeating event is never changed as a whole: its occurrence gets an exception (moved, or
  * cancelled), and reverting puts that exception back to how the occurrence was. A one-off event is moved in place, or
  * deleted after keeping a copy of its fields and reminders so revert can insert it again (as a new event: guests and
@@ -59,16 +59,21 @@ object Actions {
     private fun base(kind: String, e: Ev) = JSONObject().put("kind", kind).put("title", e.title)
         .put("begin", e.begin).put("end", e.end).put("eventId", e.eventId)
 
-    /** Moves this occurrence of [e] [minutes] later, keeping its length. */
-    fun snooze(ctx: Context, e: Ev, minutes: Int): JSONObject {
-        val entry = base("snooze", e).put("minutes", minutes)
+    /**
+     * Moves the start of this occurrence of [e] to [begin] and keeps its end, so nothing after it shifts: a delay, or
+     * starting it early.
+     */
+    fun move(ctx: Context, e: Ev, begin: Long): JSONObject {
+        val entry = base("move", e).put("newBegin", begin)
         return log(ctx, runCatching {
             val s = series(ctx, e.eventId) ?: error("event ${e.eventId} not found")
-            val times = ContentValues().apply { put(Events.DTSTART, e.begin + minutes * MIN); put(Events.DTEND, e.end + minutes * MIN) }
+            val times = ContentValues().apply { put(Events.DTSTART, begin); put(Events.DTEND, e.end) }
             if (s.getBoolean("recurring")) {
-                // The exception takes the series' length; the provider refuses an explicit DTEND here.
-                val id = exception(ctx, e, ContentValues().apply { put(Events.DTSTART, e.begin + minutes * MIN) })
+                // The exception takes the series' length on insert (the provider refuses an explicit DTEND there),
+                // so its end is put back afterwards.
+                val id = exception(ctx, e, ContentValues().apply { put(Events.DTSTART, begin) })
                 entry.put("how", "exception").put("target", id)
+                update(ctx, id, times)
             } else {
                 update(ctx, e.eventId, times)
                 entry.put("how", "times").put("target", e.eventId)

@@ -882,7 +882,7 @@ public partial class MainWindow : Window
                 ? (a.Event.AllDay ? $"{a.Event.Start:ddd d MMM}" : until.TotalHours < 12 ? $"in {Dur(until)}  ·  {Time(a.Event.Start)}" : $"{a.Event.Start:ddd} {Time(a.Event.Start)}")
                 : $"until {Time(a.Event.End)}";
 
-            var b = Banner(reminder ? "\uEA8F" : "\uE768", accent, title, sub);   // Ringer (bell) / Play
+            var b = Banner(reminder ? "\uEA8F" : "\uE768", accent, title, sub, big: true, soft: reminder);   // Ringer (bell) / Play
             b.MouseLeftButtonDown += (_, e) => { e.Handled = true; banners.Remove(a); Render(); };
             if (pulsed.Add(a))   // a gentle double pulse the first time it appears
                 b.BeginAnimation(OpacityProperty, new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
@@ -890,24 +890,30 @@ public partial class MainWindow : Window
         }
     }
 
-    Border Banner(string icon, Color accent, string title, string sub)
+    /// [big]: a start or reminder, so the widget grows to make it hard to miss. [soft]: a reminder, in a calmer tint than a start.
+    Border Banner(string icon, Color accent, string title, string sub, bool big = false, bool soft = false)
     {
         var glyph = new TextBlock
         {
-            Text = icon, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14,
+            Text = icon, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = big ? 20 : 14,
             Foreground = new SolidColorBrush(accent), Margin = new(0, 2, 10, 0), VerticalAlignment = VerticalAlignment.Top,
         };
         var text = new StackPanel();
-        text.Children.Add(new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        text.Children.Add(Text(sub, 11.5, 0.75));
+        text.Children.Add(new TextBlock
+        {
+            Text = title, FontSize = big ? 19 : 13, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = big ? TextWrapping.Wrap : TextWrapping.NoWrap, MaxHeight = big ? 52 : double.PositiveInfinity,   // two lines
+        });
+        text.Children.Add(Text(sub, big ? 13 : 11.5, 0.75));
         var row = new DockPanel();
         DockPanel.SetDock(glyph, Dock.Left);
         row.Children.Add(glyph); row.Children.Add(text);
         return new Border
         {
-            Child = row, CornerRadius = new(8), Padding = new(10, 6, 10, 7), Margin = new(0, 0, 0, 6), Cursor = System.Windows.Input.Cursors.Hand,
-            Background = new SolidColorBrush(Color.FromArgb(0x26, accent.R, accent.G, accent.B)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0xB0, accent.R, accent.G, accent.B)), BorderThickness = new(1),
+            Child = row, CornerRadius = new(8), Padding = big ? new(14, 12, 14, 13) : new(10, 6, 10, 7), Margin = new(0, 0, 0, 6),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Background = new SolidColorBrush(Color.FromArgb(big && !soft ? (byte)0x45 : soft ? (byte)0x1C : (byte)0x26, accent.R, accent.G, accent.B)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(soft ? (byte)0x70 : (byte)0xB0, accent.R, accent.G, accent.B)), BorderThickness = new(big && !soft ? 1.5 : 1),
             ToolTip = "Click to dismiss",
         };
     }

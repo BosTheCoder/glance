@@ -115,4 +115,15 @@ class AlertsTest {
         assertEquals("2h", dur(120 * MIN))
         assertEquals("1h 5m", dur(65 * MIN))
     }
+
+    // Fails if: a delay counts from a start that has already passed (so the new start is in the past and the alert
+    // fires straight back), the end moves, a delay that would swallow the event is offered, or times aren't whole minutes.
+    @Test fun delaysMoveOnlyTheStart() {
+        val e = ev(40, 0, 12)                                        // 12 min long, starts at t0
+        assertEquals(e.begin + 5 * MIN, Retime.delayed(e, 5, t0))
+        assertEquals(t0 + 7 * MIN + 2 * MIN, Retime.delayed(e, 2, t0 + 7 * MIN + 30_000))   // seen late: from now, to the minute
+        assertEquals(listOf(2, 5, 10), Retime.delays(e, t0))         // 15 would start after it ends
+        assertEquals(listOf(2), Retime.delays(e, t0 + 8 * MIN))
+        assertEquals(t0 + 3 * MIN, Retime.startNow(t0 + 3 * MIN + 59_000))
+    }
 }

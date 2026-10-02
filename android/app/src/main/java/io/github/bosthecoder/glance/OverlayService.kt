@@ -189,6 +189,8 @@ class OverlayService : Service() {
         private val BUZZ = longArrayOf(0, 500, 200, 500)
         private val ALARM = longArrayOf(0, 800, 400)   // repeats from the start until stopped
         const val STOP_ALARM = "stopAlarm"
+        /** (event id, start) of events moved to start now on StartScreen: they're under way, so no start alert. Main thread. */
+        val startedByHand = HashSet<Pair<Long, Long>>()
     }
 
     private lateinit var wm: WindowManager
@@ -539,7 +541,10 @@ class OverlayService : Service() {
             val fresh = runCatching { Cal.events(this, prefs.chosenCalendars(this)) }.getOrNull()
             h.post {
                 if (io.isShutdown) return@post   // service destroyed while the query ran
-                if (fresh != null) events = fresh
+                if (fresh != null) {
+                    events = fresh
+                    if (banner?.ev !in fresh) banner = null   // its event was moved, skipped or deleted: the banner is out of date
+                }
                 tick()
             }
         }
@@ -569,6 +574,7 @@ class OverlayService : Service() {
     }
 
     private fun alert(a: Alert, now: Long, show: Boolean = true) {
+        if (a is Alert.Starting && startedByHand.remove(a.ev.eventId to a.ev.begin)) return
         if (show) banner = a
         if (a is Alert.Starting) bannerUntil = now + 20_000
         if (a is Alert.Starting || a is Alert.Coming) {
@@ -580,11 +586,11 @@ class OverlayService : Service() {
             }
         }
         if (a is Alert.Starting && prefs.startAlarm != 0) ring(a.ev)
-        val popped = (a is Alert.Starting || a is Alert.Coming && a.starting) && popUp(a, now)
+        val popped = (a is Alert.Starting || a is Alert.Coming && a.starting || a is Alert.Reminder && prefs.fullScreen) && popUp(a, now)
         // In use: open the full-screen page straight away (the overlay permission allows starting it from here).
         // Locked or screen off: the notification's full-screen intent does it, as an alarm clock's does.
-        if (a is Alert.Starting && prefs.fullScreen) {
-            val i = StartScreen.intent(this, a.ev, eventIntent(a.ev))
+        if ((a is Alert.Starting || a is Alert.Reminder) && prefs.fullScreen) {
+            val i = StartScreen.intent(this, a.ev, eventIntent(a.ev), soft = a is Alert.Reminder, bell = true)
             StartScreen.enqueue(i)
             if (getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false) runCatching { startActivity(i) }
         }
@@ -617,7 +623,7 @@ class OverlayService : Service() {
     }
 
     /**
-     * A heads-up notification for a start, "in 5 min" and then "now" (same tag and id, so one replaces the other).
+     * A heads-up notification for a start: a reminder, "in 5 min" and then "now" (same tag and id, so each replaces the last).
      * False if notifications or the channel are off, so the caller buzzes instead.
      */
     private fun popUp(a: Alert, now: Long): Boolean {
@@ -637,8 +643,8 @@ class OverlayService : Service() {
             n.addAction(0, "Stop", stop).setDeleteIntent(stop).setAutoCancel(false)   // opening the event leaves Stop there
             if (prefs.startAlarm < 0) n.setTimeoutAfter(0)   // until stopped: the Stop button stays until it's used
         }
-        if (a is Alert.Starting && prefs.fullScreen) n.setFullScreenIntent(PendingIntent.getActivity(this, e.id.toInt(),
-            StartScreen.intent(this, e, eventIntent(e)), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT), true)
+        if ((a is Alert.Starting || a is Alert.Reminder) && prefs.fullScreen) n.setFullScreenIntent(PendingIntent.getActivity(this, e.id.toInt(),
+            StartScreen.intent(this, e, eventIntent(e), soft = a is Alert.Reminder, bell = true), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT), true)
         try { nm.notify("start", e.id.toInt(), n.build()) } catch (_: SecurityException) { return false }   // permission revoked just now
         return true
     }
@@ -907,6 +913,12 @@ class OverlayService : Service() {
         }
     }
 
+    /** An upcoming event, tapped: its page (soft blue) to start it now, delay it, skip it or open it. */
+    private fun plan(e: Ev) {
+        runCatching { startActivity(StartScreen.intent(this, e, eventIntent(e), soft = true)) }
+        collapse()
+    }
+
     private fun nextRow(e: Ev, now: Long) = LinearLayout(ui).apply {
         gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(5), 0, 0)
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
@@ -948,7 +960,7 @@ class OverlayService : Service() {
 
     private fun row(e: Ev, now: Long) = LinearLayout(ui).apply {
         gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(3), 0, dp(3))
-        background = ripple(); setOnClickListener { openEvent(e) }
+        background = ripple(); setOnClickListener { if (!e.allDay && e.begin > System.currentTimeMillis()) plan(e) else openEvent(e) }
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(8) })
         addView(ui.text(if (e.allDay) "all day" else hm(e.begin), 12f, 0x99FFFFFF.toInt()), LinearLayout.LayoutParams(dp(48), WRAP_CONTENT))

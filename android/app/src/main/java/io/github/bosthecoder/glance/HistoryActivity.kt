@@ -14,7 +14,7 @@ import android.widget.Toast
 import org.json.JSONObject
 import kotlin.concurrent.thread
 
-/** Every snooze, won't do and revert, newest first, with Revert on the ones that can still be undone. */
+/** Every move, skip (and older snooze) and revert, newest first, with Revert on the ones that can still be undone. */
 class HistoryActivity : Activity() {
     private lateinit var list: LinearLayout
 
@@ -30,7 +30,8 @@ class HistoryActivity : Activity() {
         fun at(ms: Long) = if (day(ms) == day(e.getLong("at"))) hm(ms) else fmt(ms, "EEE HH:mm")
         val s = when (e.getString("kind")) {
             "snooze" -> "Snoozed $t ${dur(e.getInt("minutes") * MIN)}: ${at(e.getLong("begin"))} → ${hm(e.getLong("begin") + e.getInt("minutes") * MIN)}"
-            "wontdo" -> "Won't do $t (${at(e.getLong("begin"))})"
+            "move" -> "Moved the start of $t: ${at(e.getLong("begin"))} → ${hm(e.getLong("newBegin"))}"
+            "wontdo" -> "Skipped $t (${at(e.getLong("begin"))})"
             "revert" -> "Reverted $t"
             else -> e.toString()
         }
@@ -42,7 +43,7 @@ class HistoryActivity : Activity() {
         list.removeAllViews()
         list.addView(text("Action history", 26f, Color.WHITE, bold = true).apply { setPadding(0, 0, 0, dp(12)) })
         val all = Actions.history(this).reversed()
-        if (all.isEmpty()) list.addView(text("Nothing yet. Snooze or Won't do on the start screen shows up here.", 14f, 0x99FFFFFF.toInt()).apply { maxLines = 3 })
+        if (all.isEmpty()) list.addView(text("Nothing yet. Delay, Start now and Skip on the start screen show up here.", 14f, 0x99FFFFFF.toInt()).apply { maxLines = 3 })
         for (e in all) list.addView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(10), 0, dp(10))
             addView(LinearLayout(context).apply {

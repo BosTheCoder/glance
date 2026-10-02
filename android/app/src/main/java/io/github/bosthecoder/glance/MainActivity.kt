@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 34 && prefs.fullScreen) permission("Full screen when events start", canFullScreen(this)) {
             overlaySettings.launch(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:$packageName".toUri()))
         }
-        permission("Change events (snooze, won't do)", canWrite(this)) { askPermission.launch(Manifest.permission.WRITE_CALENDAR) }
+        permission("Change events (start now, delay, skip)", canWrite(this)) { askPermission.launch(Manifest.permission.WRITE_CALENDAR) }
         permission("Location (for travel times)", canLocate(this)) {
             askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
@@ -184,13 +184,13 @@ class MainActivity : ComponentActivity() {
         toggle("Vibrate on reminders and heads-ups", prefs.vibrate) { prefs.vibrate = it }
         choice("Keep buzzing when an event starts", listOf(0, 30, 60, 120, 300, -1),
             { when (it) { 0 -> "Off"; -1 -> "Until stopped"; else -> if (it < 60) "$it s" else "${it / 60} min" } }, prefs.startAlarm) { prefs.startAlarm = it }
-        toggle("Fill the screen when an event starts (over the lock screen too)", prefs.fullScreen) { prefs.fullScreen = it; list.post { build() } }
+        toggle("Fill the screen for starts and reminders (over the lock screen too)", prefs.fullScreen) { prefs.fullScreen = it; list.post { build() } }
         list.addView(button("Pop-up when events start: sound and vibration", 0xFF1A1A1E.toInt()) {
             OverlayService.startsChannel(this)   // the settings page needs the channel to exist
             startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, packageName).putExtra(Settings.EXTRA_CHANNEL_ID, OverlayService.STARTS))
         }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
-        list.addView(button("Action history (snoozes, won't dos, revert)", 0xFF1A1A1E.toInt()) {
+        list.addView(button("Action history (moves, skips, revert)", 0xFF1A1A1E.toInt()) {
             startActivity(Intent(this, HistoryActivity::class.java))
         }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
         toggle("Travel times", prefs.travel) { prefs.travel = it }

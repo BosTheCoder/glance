@@ -103,6 +103,19 @@ class AlertTracker(private val windowMs: Long = 2 * MIN) {
     }
 }
 
+/**
+ * New start times for the start screen's buttons. Only the start moves; the end stays, so later plans don't shift.
+ * Times are whole minutes, as a calendar shows them.
+ */
+object Retime {
+    val DELAYS = listOf(2, 5, 10, 15)
+    /** [minutes] after the event's start, or after now if the start has already passed: "I need 5 more minutes". */
+    fun delayed(e: Ev, minutes: Int, now: Long) = maxOf(e.begin, startNow(now)) + minutes * MIN
+    /** The delays that still leave some of the event. */
+    fun delays(e: Ev, now: Long) = DELAYS.filter { delayed(e, it, now) < e.end }
+    fun startNow(now: Long) = now / MIN * MIN
+}
+
 /** "25m", "1h", "1h 5m": same as the Windows app. */
 fun dur(ms: Long): String {
     val m = maxOf(1L, (ms + MIN - 1) / MIN)
