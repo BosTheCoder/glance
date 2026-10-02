@@ -96,14 +96,18 @@ class StartScreen : Activity() {
                     }) }
                 })
             }
+            // Already going: Start now just says you've started. Not yet: it moves the start to now.
+            fun startNow(big: Boolean) = button("Start now", 0xFF1F8F5F.toInt(), weight = !big, height = if (big) 72 else 60) {
+                if (started) dismiss() else act { Actions.move(this@StartScreen, ev, Retime.startNow(System.currentTimeMillis())) }
+            }
+            // The big button is the likeliest next step: for a reminder that's carrying on (Dismiss), otherwise Start now.
+            val reminder = soft && i.getBooleanExtra("bell", false)
             addView(LinearLayout(context).apply {
                 addView(button("Skip event", 0xFF3A1F1F.toInt(), weight = true) { act { Actions.wontDo(this@StartScreen, ev) } })
-                if (soft) addView(button("Dismiss", 0x1AFFFFFF, weight = true) { dismiss() })
+                if (reminder) addView(startNow(big = false))
+                else if (soft) addView(button("Dismiss", 0x1AFFFFFF, weight = true) { dismiss() })
             })
-            // Already going: Start now just says you've started. Not yet: it moves the start to now.
-            addView(button("Start now", 0xFF1F8F5F.toInt(), height = 72) {
-                if (started) dismiss() else act { Actions.move(this@StartScreen, ev, Retime.startNow(System.currentTimeMillis())) }
-            })
+            addView(if (reminder) button("Dismiss", 0xFF2F4A86.toInt(), height = 72) { dismiss() } else startNow(big = true))
         })
     }
 
