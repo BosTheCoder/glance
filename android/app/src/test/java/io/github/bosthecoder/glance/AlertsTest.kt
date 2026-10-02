@@ -125,5 +125,7 @@ class AlertsTest {
         assertEquals(listOf(2, 5, 10), Retime.delays(e, t0))         // 15 would start after it ends
         assertEquals(listOf(2), Retime.delays(e, t0 + 8 * MIN))
         assertEquals(t0 + 3 * MIN, Retime.startNow(t0 + 3 * MIN + 59_000))
+        assertFalse(Retime.late(e, t0 + 90_000))                     // answered within a minute or so: on time
+        assertTrue(Retime.late(e, t0 + 2 * MIN))
     }
 }

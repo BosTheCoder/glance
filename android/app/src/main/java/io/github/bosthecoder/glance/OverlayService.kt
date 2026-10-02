@@ -913,9 +913,12 @@ class OverlayService : Service() {
         }
     }
 
-    /** An upcoming event, tapped: its page (soft blue) to start it now, delay it, skip it or open it. */
-    private fun plan(e: Ev) {
-        runCatching { startActivity(StartScreen.intent(this, e, eventIntent(e), soft = true)) }
+    /**
+     * An upcoming event, or the one on now, tapped: its page to start it now (move its start to now), delay it, skip it
+     * or open it. Upcoming ones get the soft blue page, the one on now the green start page.
+     */
+    private fun page(e: Ev) {
+        runCatching { startActivity(StartScreen.intent(this, e, eventIntent(e), soft = e.begin > System.currentTimeMillis())) }
         collapse()
     }
 
@@ -960,7 +963,7 @@ class OverlayService : Service() {
 
     private fun row(e: Ev, now: Long) = LinearLayout(ui).apply {
         gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(3), 0, dp(3))
-        background = ripple(); setOnClickListener { if (!e.allDay && e.begin > System.currentTimeMillis()) plan(e) else openEvent(e) }
+        background = ripple(); setOnClickListener { if (!e.allDay && e.begin > System.currentTimeMillis()) page(e) else openEvent(e) }
         addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(e.color or 0xFF000000.toInt()) } },
             LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(8) })
         addView(ui.text(if (e.allDay) "all day" else hm(e.begin), 12f, 0x99FFFFFF.toInt()), LinearLayout.LayoutParams(dp(48), WRAP_CONTENT))
@@ -972,7 +975,7 @@ class OverlayService : Service() {
         orientation = LinearLayout.VERTICAL
         background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(CARD) }
         setPadding(dp(10), dp(7), dp(10), dp(9))
-        foreground = ripple(8); setOnClickListener { openEvent(e) }
+        foreground = ripple(8); setOnClickListener { page(e) }
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) }
         addView(ui.text(e.title, 17f, Color.WHITE, bold = true))
         addView(ui.text("until ${hm(e.end)}  ·  ${dur(e.end - now)} left", 12f, 0xB3FFFFFF.toInt()))

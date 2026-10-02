@@ -21,7 +21,8 @@ import kotlin.concurrent.thread
  * screen (showWhenLocked / turnScreenOn in the manifest). Opened by the start notification's full-screen intent, or
  * straight from the service when the phone is in use. Start now also stops a "keep buzzing" alarm.
  * A reminder, or an upcoming event tapped in the widget, opens the same page in a softer blue ("soft"), where Start
- * now moves the event's start to now. Delay moves the start later; neither touches the end.
+ * now moves the event's start to now; so does a start answered late, or the event on now tapped in the widget.
+ * Delay moves the start later; neither touches the end.
  * Several at once queue up and show one after another; each is started, delayed or skipped in turn.
  */
 class StartScreen : Activity() {
@@ -62,6 +63,7 @@ class StartScreen : Activity() {
         val begin = i.getLongExtra("begin", 0); val end = i.getLongExtra("end", 0)
         val ev = Ev(i.id(), i.getStringExtra("title") ?: "", begin, end, false, color, eventId = i.getLongExtra("eventId", 0))
         val started = begin <= now
+        val late = Retime.late(ev, now)
         val soft = i.soft()
         fun button(s: String, bg: Int, weight: Boolean = false, height: Int = 60, onClick: () -> Unit) = Button(this).apply {
             text = s; isAllCaps = false; setTextColor(Color.WHITE); textSize = if (height > 60) 22f else 18f
@@ -71,6 +73,7 @@ class StartScreen : Activity() {
             setOnClickListener { onClick() }
         }
         val head = when {
+            late -> "▶  STARTED ${dur(now - begin).uppercase()} AGO"
             started && !soft -> "▶  NOW"
             started -> "NOW"
             else -> (if (i.getBooleanExtra("bell", false)) "🔔  " else "") + "IN ${dur(begin - now).uppercase()}  ·  ${hm(begin)}"
@@ -96,16 +99,16 @@ class StartScreen : Activity() {
                     }) }
                 })
             }
-            // Already going: Start now just says you've started. Not yet: it moves the start to now.
+            // Just started: Start now just says you've started. Not yet, or a while ago: it moves the start to now.
             fun startNow(big: Boolean) = button("Start now", 0xFF1F8F5F.toInt(), weight = !big, height = if (big) 72 else 60) {
-                if (started) dismiss() else act { Actions.move(this@StartScreen, ev, Retime.startNow(System.currentTimeMillis())) }
+                if (started && !late) dismiss() else act { Actions.move(this@StartScreen, ev, Retime.startNow(System.currentTimeMillis())) }
             }
             // The big button is the likeliest next step: for a reminder that's carrying on (Dismiss), otherwise Start now.
             val reminder = soft && i.getBooleanExtra("bell", false)
             addView(LinearLayout(context).apply {
                 addView(button("Skip event", 0xFF3A1F1F.toInt(), weight = true) { act { Actions.wontDo(this@StartScreen, ev) } })
                 if (reminder) addView(startNow(big = false))
-                else if (soft) addView(button("Dismiss", 0x1AFFFFFF, weight = true) { dismiss() })
+                else if (soft || late) addView(button("Dismiss", 0x1AFFFFFF, weight = true) { dismiss() })   // late: you did start on time
             })
             addView(if (reminder) button("Dismiss", 0xFF2F4A86.toInt(), height = 72) { dismiss() } else startNow(big = true))
         })

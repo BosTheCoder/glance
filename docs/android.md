@@ -95,13 +95,15 @@ The alerts show inside the pill, card or side strip, and each kind has its own c
 
 **Full screen for reminders.** When one of an event's reminders is due, the same page opens in a calmer blue, headed "🔔 IN 10M · 14:00", so it reads as a heads-up rather than a start. It has the same buttons, but the big one is **Dismiss** (the likeliest thing to do with a heads-up) and **Start now** sits next to **Skip event**. If you leave it and the event starts, the start's page replaces it.
 
-**Tap an upcoming event** in the open card to get that page (blue, no bell) for it: start it now, delay it, skip it, or **Open event** for the calendar app. Events on now and earlier ones still open straight in the calendar app.
+**Started late.** If the start page is answered 2 minutes or more after the event began, it says "▶ STARTED 12M AGO", **Start now** moves the start to now, and **Dismiss** (next to Skip) leaves the times as they are, for when you did start on time.
+
+**Tap an event** in the open card to get its page: an upcoming one gets the blue page (no bell), the one on now gets the green start page, so you can move a start you missed to now without opening the calendar. **Open event** on the page opens it in the calendar app. Earlier events still open straight in the calendar app.
 
 ### Start now, Delay and Skip
 
 These change your calendar, and the change syncs to Google:
 
-- **Start now** on an event that has already started just closes the page. On one that hasn't started yet, it moves its start to now (to the minute) and keeps its end, so it gets longer. No start alert fires for it, since you've started it. Anything it now overlaps is left as it is.
+- **Start now** on an event that started in the last 2 minutes just closes the page. On one that hasn't started yet, or started longer ago, it moves its start to now (to the minute) and keeps its end, so it gets longer or shorter. No start alert fires for it, since you've started it. Anything it now overlaps is left as it is.
 - **Delay start** moves the start later and keeps the end, so nothing after it shifts and the event gets shorter. It counts from the event's start, or from now if the start has already passed ("I need 5 more minutes"). Delays that would leave nothing of the event aren't offered. The start alert fires again at the new time.
 - **Skip event** deletes it.
 - **Repeating events** only ever change the one occurrence: it's moved or cancelled as an exception, the same as "this event" in Google Calendar. The rest of the series stays as it was. An occurrence of a repeating event created in the last minute or so is refused ("hasn't synced yet") until it has reached Google, because changing it before then can hide the series' other occurrences.

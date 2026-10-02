@@ -114,6 +114,9 @@ object Retime {
     /** The delays that still leave some of the event. */
     fun delays(e: Ev, now: Long) = DELAYS.filter { delayed(e, it, now) < e.end }
     fun startNow(now: Long) = now / MIN * MIN
+    /** Started a while ago without you: Start now then moves its start to now instead of just closing the page. */
+    fun late(e: Ev, now: Long) = now - e.begin >= LATE
+    const val LATE = 2 * MIN
 }
 
 /** "25m", "1h", "1h 5m": same as the Windows app. */
