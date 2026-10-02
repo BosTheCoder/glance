@@ -153,7 +153,10 @@ public partial class MainWindow : Window
             // Only in the settled, focused view: a click that lands as the widget is still expanding under the pointer isn't aimed.
             if (s.Docked == null && hovering && downAt - hoveredSince > TimeSpan.FromMilliseconds(500) && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && LinkAt(down.OriginalSource) is string link)
             {
-                Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });   // a click (not a drag) on an event or a travel time opens it
+                // A click (not a drag) on an event on now or coming up opens its page (start it now, delay, skip, open);
+                // on an earlier event or a travel time it opens the link.
+                if (EventAt(down.OriginalSource) is { AllDay: false } ev && ev.End > DateTime.Now) ShowPage(ev, soft: ev.Start > DateTime.Now, bell: false);
+                else Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });
                 return;
             }
             else if (s.Docked switch { "Left" => Left < wa.Left + 60, "Right" => Left + ActualWidth > wa.Right - 60, _ => Top < wa.Top + 60 })
@@ -379,9 +382,12 @@ public partial class MainWindow : Window
         {
             // Once per change: pulse the whole widget (so the side strip gets it too), chime, and come back if hidden.
             headsUpFor = coming.At;
+            if (!Retime.Stale(coming.At.AddMinutes(-s.HeadsUpMinutes), MovedAt(coming.Event)))   // not for a start you just set
+            {
             Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
             if (!IsVisible && s.AlertsReveal) Show();
             Attention(null);
+            }
         }
         // Docked, the banners don't fit, so the strip's rim takes the alert's colour instead.
         Color? rim = s.Docked != null && banners.Count > 0 ? (banners[^1].Kind == AlertKind.Reminder ? Blue : Green) : headsUp ? Amber : null;
@@ -545,6 +551,17 @@ public partial class MainWindow : Window
         el.Tag = e;
         if (e.Link != null) el.Cursor = System.Windows.Input.Cursors.Hand;
         return el;
+    }
+
+    static Ev? EventAt(object? source)
+    {
+        for (var d = source as DependencyObject; d != null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            switch (d)
+            {
+                case FrameworkElement { Tag: Ev e }: return e;
+                case FrameworkElement { Tag: string }: return null;   // a travel time inside an event row
+            }
+        return null;
     }
 
     /// The link under a click: an event's (see Clickable) or a travel time's (see TimeChip).
@@ -856,7 +873,9 @@ public partial class MainWindow : Window
         var since = alertsCheckedTo < now.AddMinutes(-2) ? now.AddMinutes(-2) : alertsCheckedTo;   // after sleep, don't replay the day
         alertsCheckedTo = now;
         var fresh = Alerts.Due(events, since, now, s.Reminders);
+        fresh.RemoveAll(a => Retime.Stale(a.At, MovedAt(a.Event)));   // At: the moment it fell due
         if (fresh.Count == 0) return;
+        if (s.BigAlerts > 0) foreach (var a in fresh) ShowPage(a.Event, soft: a.Kind == AlertKind.Reminder, bell: true);
 
         banners.AddRange(fresh.Select(a => a with { At = now }));   // At = when shown, for expiry
         if (!IsVisible && s.AlertsReveal) Show();
@@ -927,6 +946,8 @@ public partial class MainWindow : Window
         banners.Add(new(AlertKind.Starting, e, now));
         banners.Add(new(AlertKind.Reminder, e, now));
         Attention(AlertKind.Reminder);
+        ShowPage(e with { Start = now.AddSeconds(-1) }, soft: false, bell: true);   // the big page: a start, then the reminder behind it
+        ShowPage(e, soft: true, bell: true);
         Render();
     }
 }

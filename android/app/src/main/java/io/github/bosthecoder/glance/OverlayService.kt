@@ -4,6 +4,7 @@ import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.app.KeyguardManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ActivityNotFoundException
@@ -27,6 +28,9 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.hardware.display.DisplayManager
 import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.RingtoneManager
+import androidx.core.net.toUri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -175,22 +179,30 @@ class OverlayService : Service() {
         fun stop(ctx: Context) { ctx.stopService(Intent(ctx, OverlayService::class.java)) }
 
         /**
-         * Pop-ups for starts: high importance, so Android shows them as heads-up notifications over whatever is open,
-         * with the default sound and a long buzz. The phone's ringer mode applies (silent: none, vibrate: buzz only),
-         * and the user can change any of it in the channel's settings. A channel's settings are fixed once created.
+         * Pop-ups for starts, reminders and heads-ups: high importance, so Android shows them over whatever is open.
+         * Silent: Glance buzzes and plays its own sound for every alert ([chime]), so they all feel the same and the
+         * sound is a setting. A channel's settings are fixed once created, hence the new id; "starts" (sound and buzz
+         * on the channel) went in 1.20.
          */
-        const val STARTS = "starts"
-        fun startsChannel(ctx: Context) = NotificationManagerCompat.from(ctx).createNotificationChannel(
-            NotificationChannelCompat.Builder(STARTS, NotificationManagerCompat.IMPORTANCE_HIGH)
-                .setName("Events starting")
-                .setDescription("Pops up when an event is about to start and when it starts")
-                .setVibrationEnabled(true).setVibrationPattern(BUZZ)
+        const val STARTS = "alerts"
+        fun startsChannel(ctx: Context) = NotificationManagerCompat.from(ctx).run {
+            deleteNotificationChannel("starts")
+            createNotificationChannel(NotificationChannelCompat.Builder(STARTS, NotificationManagerCompat.IMPORTANCE_HIGH)
+                .setName("Event alerts")
+                .setDescription("Pops up for reminders, just before an event starts, and when it starts")
+                .setSound(null, null).setVibrationEnabled(false)
                 .build())
+        }
         private val BUZZ = longArrayOf(0, 500, 200, 500)
         private val ALARM = longArrayOf(0, 800, 400)   // repeats from the start until stopped
         const val STOP_ALARM = "stopAlarm"
-        /** (event id, start) of events moved to start now on StartScreen: they're under way, so no start alert. Main thread. */
-        val startedByHand = HashSet<Pair<Long, Long>>()
+        /** (event id, new start) -> when it was moved on StartScreen; see [Alert.stale]. Main thread. */
+        private val movedAt = HashMap<Pair<Long, Long>, Long>()
+        fun moved(eventId: Long, begin: Long) {
+            val now = System.currentTimeMillis()
+            movedAt.values.removeAll { it < now - 24 * 60 * MIN }
+            movedAt[eventId to begin] = now
+        }
     }
 
     private lateinit var wm: WindowManager
@@ -574,7 +586,7 @@ class OverlayService : Service() {
     }
 
     private fun alert(a: Alert, now: Long, show: Boolean = true) {
-        if (a is Alert.Starting && startedByHand.remove(a.ev.eventId to a.ev.begin)) return
+        if (movedAt[a.ev.eventId to a.ev.begin]?.let { a.stale(it, prefs.headsUp) } == true) return
         if (show) banner = a
         if (a is Alert.Starting) bannerUntil = now + 20_000
         if (a is Alert.Starting || a is Alert.Coming) {
@@ -585,8 +597,9 @@ class OverlayService : Service() {
                 duration = 260; repeatCount = if (a is Alert.Starting) 3 else 1; repeatMode = ValueAnimator.REVERSE; start()   // two pulses, or one
             }
         }
+        chime()
         if (a is Alert.Starting && prefs.startAlarm != 0) ring(a.ev)
-        val popped = (a is Alert.Starting || a is Alert.Coming && a.starting || a is Alert.Reminder && prefs.fullScreen) && popUp(a, now)
+        if (a is Alert.Starting || a is Alert.Coming && a.starting || a is Alert.Reminder && prefs.fullScreen) popUp(a, now)
         // In use: open the full-screen page straight away (the overlay permission allows starting it from here).
         // Locked or screen off: the notification's full-screen intent does it, as an alarm clock's does.
         if ((a is Alert.Starting || a is Alert.Reminder) && prefs.fullScreen) {
@@ -594,7 +607,22 @@ class OverlayService : Service() {
             StartScreen.enqueue(i)
             if (getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false) runCatching { startActivity(i) }
         }
-        if (a !is Alert.Starting && !popped && prefs.vibrate) buzz(VibrationEffect.createWaveform(BUZZ, -1), alarm = false)
+    }
+
+    /**
+     * Every alert: a buzz, plus the chosen sound when the ringer is on. Vibrate mode buzzes only; silent mode and
+     * Do Not Disturb get neither.
+     */
+    private fun chime() {
+        val ringer = getSystemService(AudioManager::class.java).ringerMode
+        if (ringer == AudioManager.RINGER_MODE_SILENT ||
+            getSystemService(NotificationManager::class.java).currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return
+        if (prefs.vibrate) buzz(VibrationEffect.createWaveform(BUZZ, -1), alarm = false)
+        if (ringer == AudioManager.RINGER_MODE_NORMAL && prefs.sound.isNotEmpty()) runCatching {
+            RingtoneManager.getRingtone(this, prefs.sound.toUri())?.apply {
+                audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT).build()
+            }?.play()
+        }
     }
 
     private fun buzz(effect: VibrationEffect, alarm: Boolean) {
@@ -624,7 +652,7 @@ class OverlayService : Service() {
 
     /**
      * A heads-up notification for a start: a reminder, "in 5 min" and then "now" (same tag and id, so each replaces the last).
-     * False if notifications or the channel are off, so the caller buzzes instead.
+     * False if notifications or the channel are off.
      */
     private fun popUp(a: Alert, now: Long): Boolean {
         val nm = NotificationManagerCompat.from(this)

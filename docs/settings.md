@@ -35,6 +35,7 @@ Everything in the right-click menu is saved to `settings.json` next to `Glance.e
 | `Sound` | `"Reminders"` | `Off`, `Reminders` (heads-ups and reminders) or `All` (starts too). Uses the Windows notification sound |
 | `Shake` | `"Reminders"` | A quick sideways shake to catch your eye: `Off`, `Reminders` (heads-ups and reminders) or `All` (starts too) |
 | `AlertsReveal` | `true` | Bring the widget back for an alert if you've hidden it |
+| `BigAlerts` | `40` | Starts and reminders also open a page in the middle of the screen, this % of the screen's width (of a 16:9 slice on an ultrawide): `0` (off), `30`, `40` or `50` |
 | `Left`, `Top` | `null` | Position. `null` means top-right of the primary screen |
 
 "Start with Windows" isn't in this file. It's the `Glance` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.

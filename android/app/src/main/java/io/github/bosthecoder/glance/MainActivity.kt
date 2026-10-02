@@ -6,6 +6,8 @@ import android.content.pm.PackageInstaller
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -42,6 +44,10 @@ class MainActivity : ComponentActivity() {
         build()
     }
     private val overlaySettings = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { build() }
+    private val pickSound = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == RESULT_OK) prefs.sound = r.data?.let { IntentCompat.getParcelableExtra(it, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java) }?.toString() ?: ""
+        build()
+    }
     /** Back from "Install unknown apps": carry on with the update if it's now allowed. */
     private val unknownSources = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         build(); release?.let { if (packageManager.canRequestPackageInstalls()) install(it) }
@@ -181,11 +187,19 @@ class MainActivity : ComponentActivity() {
         choice("Idle opacity", listOf(25, 50, 75, 100), { "$it%" }, prefs.idleOpacity) { prefs.idleOpacity = it }
         choice("Fade after", listOf(3, 5, 10, 30), { "$it s" }, prefs.fadeAfter) { prefs.fadeAfter = it }
         choice("Heads-up before a change", listOf(2, 5, 10), { "$it min" }, prefs.headsUp) { prefs.headsUp = it }
-        toggle("Vibrate on reminders and heads-ups", prefs.vibrate) { prefs.vibrate = it }
+        toggle("Vibrate on alerts (not in silent mode)", prefs.vibrate) { prefs.vibrate = it }
+        val tone = prefs.sound.takeIf { it.isNotEmpty() }?.let { runCatching { RingtoneManager.getRingtone(this, it.toUri())?.getTitle(this) }.getOrNull() } ?: "None"
+        list.addView(button("Alert sound: $tone (when the ringer is on)", 0xFF1A1A1E.toInt()) {
+            pickSound.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, prefs.sound.takeIf { it.isNotEmpty() }?.toUri()))
+        }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
         choice("Keep buzzing when an event starts", listOf(0, 30, 60, 120, 300, -1),
             { when (it) { 0 -> "Off"; -1 -> "Until stopped"; else -> if (it < 60) "$it s" else "${it / 60} min" } }, prefs.startAlarm) { prefs.startAlarm = it }
         toggle("Fill the screen for starts and reminders (over the lock screen too)", prefs.fullScreen) { prefs.fullScreen = it; list.post { build() } }
-        list.addView(button("Pop-up when events start: sound and vibration", 0xFF1A1A1E.toInt()) {
+        list.addView(button("Pop-ups: Android's settings", 0xFF1A1A1E.toInt()) {
             OverlayService.startsChannel(this)   // the settings page needs the channel to exist
             startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, packageName).putExtra(Settings.EXTRA_CHANNEL_ID, OverlayService.STARTS))

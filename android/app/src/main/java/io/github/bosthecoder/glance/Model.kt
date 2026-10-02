@@ -27,6 +27,19 @@ sealed class Alert {
 
 const val MIN = 60_000L
 
+/** When [this] became due. A heads-up's moment is when its window opened, [headsUpMinutes] before the change. */
+fun Alert.dueAt(headsUpMinutes: Int): Long = when (this) {
+    is Alert.Starting -> ev.begin
+    is Alert.Reminder -> ev.begin - minutes * MIN
+    is Alert.Coming -> at - headsUpMinutes * MIN
+}
+
+/**
+ * An alert for an event you moved at [movedAt] that was already due then: you've just set that time, so it's not news.
+ * Delay 5 min and the "in 5 min" heads-up is stale; delay 15 and it still comes, 5 min before the new start.
+ */
+fun Alert.stale(movedAt: Long, headsUpMinutes: Int) = dueAt(headsUpMinutes) <= movedAt
+
 object Plan {
     fun current(events: List<Ev>, now: Long) = events.filter { !it.allDay && it.begin <= now && it.end > now }.sortedBy { it.begin }
     fun upcoming(events: List<Ev>, now: Long) = events.filter { !it.allDay && it.begin > now }.sortedBy { it.begin }

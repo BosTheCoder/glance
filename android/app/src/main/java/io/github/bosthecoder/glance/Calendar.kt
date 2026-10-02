@@ -93,6 +93,8 @@ class Prefs(ctx: Context) {
     var fadeAfter: Int get() = sp.getInt("fadeAfter", 5); set(v) = sp.edit { putInt("fadeAfter", v) }
     var headsUp: Int get() = sp.getInt("headsUp", 5); set(v) = sp.edit { putInt("headsUp", v) }
     var vibrate: Boolean get() = sp.getBoolean("vibrate", true); set(v) = sp.edit { putBoolean("vibrate", v) }
+    /** Played for every alert when the ringer is on; "" = none. */
+    var sound: String get() = sp.getString("sound", null) ?: Settings.System.DEFAULT_NOTIFICATION_URI.toString(); set(v) = sp.edit { putString("sound", v) }
     /** When an event starts, keep buzzing like an alarm for this many seconds: 0 = no alarm, -1 = until stopped. */
     var startAlarm: Int get() = sp.getInt("startAlarm", 0); set(v) = sp.edit { putInt("startAlarm", v) }
     /** When an event starts, fill the screen with it (StartScreen), over the lock screen too. */

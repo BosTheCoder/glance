@@ -58,4 +58,23 @@ public class AlertsTests
         Assert.Null(Alerts.Coming(backToBack, T.AddMinutes(2), 5));   // 8 min away
         Assert.Null(Alerts.Coming(backToBack, T.AddMinutes(7), 0));   // turned off
     }
+
+    // Fails if: a delay counts from a start that has passed (the new start lands in the past and the alert fires
+    // straight back), a delay that would swallow the event is offered, or "in 5 min" pops right after delaying 5 min.
+    [Fact]
+    public void Delays_move_the_start_and_alerts_already_due_when_moved_are_stale()
+    {
+        var e = Timed("Write", 0, 12);
+        Assert.Equal(T.AddMinutes(5), Retime.Delayed(e, 5, T));
+        Assert.Equal(T.AddMinutes(9), Retime.Delayed(e, 2, T.AddMinutes(7).AddSeconds(30)));   // seen late: from now, to the minute
+        Assert.Equal(new[] { 2, 5, 10 }, Retime.Delays(e, T));
+        Assert.True(Retime.Late(e, T.AddMinutes(2)));
+        Assert.False(Retime.Late(e, T.AddSeconds(90)));
+
+        // Delayed at T: a 5-min heads-up for +5 opened at T (stale), for +15 it opens at T+10 (still comes).
+        Assert.True(Retime.Stale(T.AddMinutes(5).AddMinutes(-5), T));
+        Assert.False(Retime.Stale(T.AddMinutes(15).AddMinutes(-5), T));
+        Assert.True(Retime.Stale(T, T));             // Start now: its own start alert
+        Assert.False(Retime.Stale(T, null));         // never moved
+    }
 }

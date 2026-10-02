@@ -124,9 +124,8 @@ class StartScreen : Activity() {
             runOnUiThread {
                 val msg = r.optString("error").takeIf { it.isNotEmpty() }?.let { "Couldn't change it: ${it.substringAfter(": ")}" }
                     ?: if (r.getString("kind") == "move") "Starts at ${hm(r.getLong("newBegin"))}" else "Skipped"
-                // Started by hand: its start alert would fire straight away, for something you've just started.
-                if (!r.has("error") && r.getString("kind") == "move" && r.getLong("newBegin") <= System.currentTimeMillis())
-                    OverlayService.startedByHand += r.getLong("target") to r.getLong("newBegin")
+                // Its alerts already due at the new time (the start, for Start now; "in 5m" after +5m) aren't news.
+                if (!r.has("error") && r.getString("kind") == "move") OverlayService.moved(r.getLong("target"), r.getLong("newBegin"))
                 Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                 dismiss()
             }

@@ -87,6 +87,7 @@ public partial class MainWindow
         alerts.Items.Add(Choice("Sound", new[] { ("Off", "Off"), ("Heads-up and reminders", "Reminders"), ("All alerts", "All") }, s.Sound, v => s.Sound = v));
         alerts.Items.Add(Choice("Shake", new[] { ("Off", "Off"), ("Heads-up and reminders", "Reminders"), ("All alerts", "All") }, s.Shake, v => s.Shake = v));
         alerts.Items.Add(Toggle("Show the widget for alerts when hidden", s.AlertsReveal, v => s.AlertsReveal = v));
+        alerts.Items.Add(Choice("Big alert in the middle of the screen", new[] { ("Off", 0), ("30% of the screen", 30), ("40% of the screen", 40), ("50% of the screen", 50) }, s.BigAlerts, v => s.BigAlerts = v));
         alerts.Items.Add(new Separator());
         alerts.Items.Add(Action("Preview alerts", PreviewAlerts));
         m.Items.Add(alerts);

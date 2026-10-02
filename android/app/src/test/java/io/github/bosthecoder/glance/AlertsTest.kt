@@ -128,4 +128,18 @@ class AlertsTest {
         assertFalse(Retime.late(e, t0 + 90_000))                     // answered within a minute or so: on time
         assertTrue(Retime.late(e, t0 + 2 * MIN))
     }
+
+    // Fails if: delaying by less than the heads-up window still pops "in 5m" straight away, a longer delay loses its
+    // heads-up, a reminder that's already passed for the new time fires anyway, or Start now gets its own start alert.
+    @Test fun alertsAlreadyDueWhenMovedAreStale() {
+        val moved = t0
+        fun at(delay: Int) = ev(41, delay, 30)                       // the event after "Delay +delay" at t0
+        assertTrue(Alert.Coming(at(5), true, t0 + 5 * MIN).stale(moved, 5))
+        assertTrue(Alert.Coming(at(2), true, t0 + 2 * MIN).stale(moved, 5))
+        assertFalse(Alert.Coming(at(10), true, t0 + 10 * MIN).stale(moved, 5))
+        assertTrue(Alert.Reminder(at(5), 10).stale(moved, 5))
+        assertFalse(Alert.Reminder(at(15), 10).stale(moved, 5))
+        assertTrue(Alert.Starting(ev(42, 0, 30)).stale(moved, 5))     // Start now: begins at the moment it was moved
+        assertFalse(Alert.Starting(at(5)).stale(moved, 5))           // the delayed start itself still fires
+    }
 }

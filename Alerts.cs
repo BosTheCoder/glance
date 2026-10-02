@@ -46,3 +46,20 @@ public static class Alerts
         return starting != null ? new(starting, true, at) : new(timed.First(e => e.End == at), false, at);
     }
 }
+
+/// New start times for the alert page's buttons, the same rules as Android's Retime. Only the start moves; the end
+/// stays, so later plans don't shift. Times are whole minutes, as a calendar shows them.
+public static class Retime
+{
+    public static readonly int[] DelayMinutes = [2, 5, 10, 15];
+    public static DateTime StartNow(DateTime now) => new(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, now.Kind);
+    /// [minutes] after the start, or after now if the start has passed: "I need 5 more minutes".
+    public static DateTime Delayed(Ev e, int minutes, DateTime now) => (e.Start > StartNow(now) ? e.Start : StartNow(now)).AddMinutes(minutes);
+    /// The delays that still leave some of the event.
+    public static int[] Delays(Ev e, DateTime now) => DelayMinutes.Where(m => Delayed(e, m, now) < e.End).ToArray();
+    /// Started a while ago: Start now then moves its start to now instead of just closing the page.
+    public static bool Late(Ev e, DateTime now) => now - e.Start >= TimeSpan.FromMinutes(2);
+    /// An alert that was already due ([due]) when its event was moved at [movedAt] isn't news: delay 5 min and the
+    /// "in 5 min" heads-up is stale, delay 15 and it still comes 5 min before the new start.
+    public static bool Stale(DateTime due, DateTime? movedAt) => movedAt is DateTime m && due <= m;
+}
