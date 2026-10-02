@@ -556,6 +556,7 @@ class OverlayService : Service() {
                 if (fresh != null) {
                     events = fresh
                     if (banner?.ev !in fresh) banner = null   // its event was moved, skipped or deleted: the banner is out of date
+                    StartScreen.gone(this, fresh)             // and so is its full-screen page (say, delayed on Windows)
                 }
                 tick()
             }

@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -11,11 +13,14 @@ namespace Glance;
 /// The big alert page in the middle of the screen, Android's StartScreen for the desktop: an event starting (black and
 /// green), or a reminder or a clicked event (calmer blue), with Start now, Delay start, Skip and Open. Topmost but it
 /// doesn't take focus, so typing carries on where it was. Several queue up and show one after another.
+/// Answering one tells the phone over ntfy.sh (see Sync), and an answer from the phone closes it here.
 public partial class MainWindow
 {
-    record Page(Ev Ev, bool Soft, bool Bell);
+    record Page(Ev Ev, bool Soft, bool Bell, DateTime Queued);
     readonly List<Page> pages = new();
     Window? pageWindow;
+    bool showingResult;   // the page shows how an action went (with Undo), not the event
+    static string K(Ev e) => Sync.Key(e.Title, e.Start);
     /// (event id, new start) -> when it was moved here; see Retime.Stale.
     readonly Dictionary<(string?, DateTime), DateTime> moved = new();
 
@@ -24,22 +29,85 @@ public partial class MainWindow
     /// [soft]: a reminder or a click, not a start. A start replaces a reminder for the same event still waiting.
     void ShowPage(Ev e, bool soft, bool bell)
     {
-        if (pages.Any(p => p.Ev == e && p.Soft == soft)) return;
-        if (!soft) pages.RemoveAll(p => p.Ev == e && p.Soft);
-        pages.Add(new(e, soft, bell));
-        DrawPage();
+        if (pages.Any(p => K(p.Ev) == K(e) && p.Soft == soft)) return;
+        if (!soft) pages.RemoveAll(p => K(p.Ev) == K(e) && p.Soft);
+        pages.Add(new(e, soft, bell, DateTime.Now));
+        if (pages.Count == 1 || !showingResult) DrawPage();
     }
 
-    void NextPage()
+    /// On to the next page. [send]: tell the phone this one's answered (an action has already done so).
+    void NextPage(bool send)
     {
-        if (pages.Count > 0) pages.RemoveAt(0);
+        if (pages.Count > 0) { if (send) Answered(K(pages[0].Ev)); pages.RemoveAt(0); }
         DrawPage();
+    }
+    void NextPage() => NextPage(true);
+
+    // ---------- sync with the phone ----------
+
+    static readonly HttpClient relay = new() { Timeout = Timeout.InfiniteTimeSpan };
+    readonly HashSet<string> sent = new();   // so this machine's own message coming back doesn't close the next page
+    CancellationTokenSource? listening;
+    string? Topic => demo || g.Account == null ? null : Sync.Topic(g.Account);
+
+    async void Answered(string key)
+    {
+        sent.Add(key);
+        if (Topic is not string t) return;
+        try { using var c = new CancellationTokenSource(10_000); await relay.PostAsync("https://ntfy.sh/" + t, new StringContent(key), c.Token); }
+        catch { }   // offline: the phone just won't hear about it
+    }
+
+    /// While a page is up: every answer sent in the last 10 minutes and from now on (ntfy keeps them), until [stop].
+    async Task Listen(CancellationToken stop)
+    {
+        while (!stop.IsCancellationRequested && Topic is string t)
+        {
+            try
+            {
+                using var r = await relay.GetAsync($"https://ntfy.sh/{t}/json?since=10m", HttpCompletionOption.ResponseHeadersRead, stop);
+                using var reader = new StreamReader(await r.Content.ReadAsStreamAsync(stop));
+                while (await reader.ReadLineAsync(stop) is string line)
+                    if (JsonNode.Parse(line) is { } m && (string?)m["event"] == "message")
+                        Remote((string)m["message"]!, DateTimeOffset.FromUnixTimeSeconds((long)m["time"]!).LocalDateTime);
+            }
+            catch when (!stop.IsCancellationRequested) { }
+            catch { return; }
+            try { await Task.Delay(5000, stop); } catch { return; }
+        }
+    }
+
+    /// Answered on the phone at [at]: close it here too. Only what was already up then: an answer to the event's
+    /// reminder mustn't close its start page that came later.
+    void Remote(string key, DateTime at)
+    {
+        if (sent.Contains(key)) return;
+        banners.RemoveAll(a => K(a.Event) == key && a.At <= at);
+        Drop(p => K(p.Ev) == key && p.Queued <= at);
+        Render();
+    }
+
+    /// The calendar changed (say, the phone delayed or skipped it): pages and banners for occurrences that are gone.
+    void DropGone()
+    {
+        bool Gone(Ev e) => e.Id != null && !events.Any(x => x.Id == e.Id && x.Start == e.Start);
+        banners.RemoveAll(a => Gone(a.Event));
+        Drop(p => Gone(p.Ev));
+    }
+
+    /// Takes pages off the queue, but not the one showing how an action here went.
+    void Drop(Func<Page, bool> gone)
+    {
+        var first = pages.FirstOrDefault();
+        pages.RemoveAll(p => gone(p) && !(p == first && showingResult));
+        if (pages.FirstOrDefault() != first) DrawPage();
     }
 
     void DrawPage(UIElement? content = null)
     {
+        showingResult = content != null;
         if (pages.Count == 0) { pageWindow?.Close(); pageWindow = null; return; }
-        var (e, soft, bell) = pages[0];
+        var (e, soft, bell, _) = pages[0];
         if (pageWindow == null)
         {
             var wa = Native.WorkArea(this, hwnd);
@@ -52,7 +120,9 @@ public partial class MainWindow
                 FontFamily = FontFamily, Foreground = Brushes.White,
                 Owner = this,   // an owned window stays above its owner, so the pinned widget can't cover it
             };
-            pageWindow.Closed += (_, _) => { pageWindow = null; pages.Clear(); };
+            pageWindow.Closed += (_, _) => { pageWindow = null; pages.Clear(); listening?.Cancel(); };
+            listening = new CancellationTokenSource();
+            _ = Listen(listening.Token);
             pageWindow.SizeChanged += (_, _) =>   // centred on the widget's screen, whatever height the content takes
             {
                 pageWindow.Left = wa.Left + (wa.Width - pageWindow.ActualWidth) / 2;
@@ -124,7 +194,8 @@ public partial class MainWindow
         return b;
     }
 
-    /// Moves [e] to start at [start] ("move") or cancels it ("skip"), then shows how it went, with Undo, for a few seconds.
+    /// Moves [e] to start at [start] ("move") or cancels it ("skip"), then shows how it went, with Undo. After a delay
+    /// it offers to extend what you're on by as much; otherwise the result closes itself after a few seconds.
     async Task Act(Ev e, string kind, DateTime? start)
     {
         if (!demo && e.Id == null) { DrawPage(PageMessage("That's a preview, so there's nothing to change.", null)); return; }
@@ -132,28 +203,39 @@ public partial class MainWindow
         try
         {
             if (!demo) { if (kind == "move") await g.Move(e, start!.Value); else await g.Skip(e); }
-            Changed(e, kind == "move" ? e with { Start = start!.Value } : null);
+            Answered(K(e));
+            var now = e with { Start = start ?? e.Start };
+            Changed(e, kind == "move" ? now : null);
             if (kind == "move") moved[(e.Id, start!.Value)] = DateTime.Now;
             var undo = async () =>
             {
                 try
                 {
                     if (!demo) { if (kind == "move") await g.Move(e, e.Start); else await g.Restore(e); }
-                    Changed(kind == "move" ? e with { Start = start!.Value } : null, e);
-                    NextPage();
+                    Changed(kind == "move" ? now : null, e);
+                    NextPage(false);
                 }
                 catch (Exception x) { DrawPage(PageMessage("Couldn't undo it: " + x.Message, null)); }
             };
-            DrawPage(PageMessage(kind == "move" ? $"{e.Title} starts at {Time(start!.Value)}" : $"Skipped {e.Title}", undo));
+            var delay = kind == "move" ? start!.Value - e.Start : TimeSpan.Zero;
+            var stretch = delay > TimeSpan.Zero ? Sync.Extendable(events, e, DateTime.Now) : [];
+            var msg = kind == "move" ? $"{e.Title} starts at {Time(start!.Value)}" : $"Skipped {e.Title}";
+            if (stretch.Count > 0)
+            {
+                DrawPage(PageMessage(msg, undo, $"Extend what you're on by {Dur(delay)}?",
+                    stretch.Select(x => ($"{x.Title}  ·  until {Time(x.End)} → {Time(x.End + delay)}", (Func<Task>)(() => Extend(x, x.End + delay)))).ToArray()));
+                return;
+            }
+            DrawPage(PageMessage(msg, undo));
             var close = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
             var shown = pages.FirstOrDefault();
-            close.Tick += (_, _) => { close.Stop(); if (pages.FirstOrDefault() == shown && pageWindow?.Content is Border { Child: Viewbox { Child: Grid } }) NextPage(); };
+            close.Tick += (_, _) => { close.Stop(); if (pages.FirstOrDefault() == shown && showingResult) NextPage(false); };
             close.Start();
         }
         catch (NeedsWrite)
         {
-            DrawPage(PageMessage("Glance can only read your calendar so far. Sign in again to let it change events.", null,
-                ("Sign in again", async () => { NextPage(); g.SignOut(); await SignIn(); })));
+            DrawPage(PageMessage("Glance can only read your calendar so far. Sign in again to let it change events.", null, null,
+                ("Sign in again", async () => { NextPage(false); g.SignOut(); await SignIn(); })));
         }
         catch (Exception x) when (x is HttpRequestException or NeedsSignIn or TaskCanceledException)
         {
@@ -161,15 +243,36 @@ public partial class MainWindow
         }
     }
 
-    /// The page's after-an-action view: what happened, Undo if it can be undone, and OK.
-    Grid PageMessage(string text, Func<Task>? undo, (string Label, Func<Task> Do)? extra = null)
+    /// After a delay: runs [e] on until [end], with Undo.
+    async Task Extend(Ev e, DateTime end)
+    {
+        try
+        {
+            if (!demo) await g.Extend(e, end);
+            var longer = e with { End = end };
+            Changed(e, longer);
+            DrawPage(PageMessage($"{e.Title} now runs until {Time(end)}", async () =>
+            {
+                try { if (!demo) await g.Extend(e, e.End); Changed(longer, e); NextPage(false); }
+                catch (Exception x) { DrawPage(PageMessage("Couldn't undo it: " + x.Message, null)); }
+            }));
+        }
+        catch (Exception x) when (x is HttpRequestException or NeedsSignIn or NeedsWrite or TaskCanceledException)
+        {
+            DrawPage(PageMessage("Couldn't extend it: " + x.Message, null));
+        }
+    }
+
+    /// The page's after-an-action view: what happened, Undo if it can be undone, any [choices] under [ask], and OK.
+    Grid PageMessage(string text, Func<Task>? undo, string? ask = null, params (string Label, Func<Task> Do)[] choices)
     {
         var p = new StackPanel { Width = 560, Margin = new(30, 40, 30, 36) };
         p.Children.Add(new TextBlock { Text = text, FontSize = 26, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        if (ask != null) p.Children.Add(Text(ask, 18, 0.75, new(0, 14, 0, 4)));
+        foreach (var c in choices) p.Children.Add(PageButton(c.Label, Color.FromRgb(0x22, 0x30, 0x5A), 50, () => _ = c.Do()));
         var row = new UniformGrid { Rows = 1, Margin = new(0, 20, 0, 0) };
         if (undo != null) row.Children.Add(PageButton("Undo", Color.FromRgb(0x22, 0x30, 0x5A), 50, () => _ = undo()));
-        if (extra is { } x) row.Children.Add(PageButton(x.Label, Color.FromRgb(0x22, 0x30, 0x5A), 50, () => _ = x.Do()));
-        row.Children.Add(PageButton("OK", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF), 50, NextPage));
+        row.Children.Add(PageButton(ask != null ? "No thanks" : "OK", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF), 50, () => NextPage(false)));
         p.Children.Add(row);
         return new Grid { Children = { p } };
     }
@@ -177,7 +280,7 @@ public partial class MainWindow
     /// Puts a change into the events on screen straight away ([to] null = gone), then checks Google for the real thing.
     void Changed(Ev? from, Ev? to)
     {
-        if (from != null) { events.Remove(from); banners.RemoveAll(a => a.Event == from); }
+        if (from != null) { events.RemoveAll(x => x.Id == from.Id && x.Start == from.Start && x.Title == from.Title); banners.RemoveAll(a => K(a.Event) == K(from)); }
         if (to != null) events.Add(to);
         Render();
         if (!demo) { lastFetch = DateTime.MinValue; _ = Refresh(); }

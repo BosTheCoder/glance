@@ -63,3 +63,26 @@ public static class Retime
     /// "in 5 min" heads-up is stale, delay 15 and it still comes 5 min before the new start.
     public static bool Stale(DateTime due, DateTime? movedAt) => movedAt is DateTime m && due <= m;
 }
+
+/// "I've answered this alert", passed between Windows and the phone over ntfy.sh: the same topic from the Google
+/// account and the same key from an event's title and start minute, so nothing needs pairing and no titles leave the
+/// machine. Must match Android's Sync object exactly.
+public static class Sync
+{
+    public static string Key(string title, DateTime start) => Sha($"{title}|{new DateTimeOffset(start).ToUnixTimeSeconds() / 60}")[..16];
+    public static string Topic(string account) => "glance-" + Sha("glance-sync:" + account.ToLowerInvariant())[..20];
+    static string Sha(string s) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
+
+    /// What to stretch after delaying [moved] (as it was): everything on when it was due or now (so the one that ran
+    /// over into it counts), or failing that the event that ended last (in the past 6 hours). Extended by the delay, it
+    /// runs on until the delayed event now starts.
+    public static List<Ev> Extendable(IEnumerable<Ev> events, Ev moved, DateTime now)
+    {
+        var timed = events.Where(e => !e.AllDay && !(e.Id != null ? e.Id == moved.Id : e.Title == moved.Title)).ToList();
+        var since = moved.Start < now ? moved.Start : now;
+        var on = timed.Where(e => e.Start <= now && e.End >= since).ToList();
+        if (on.Count > 0) return on;
+        var last = timed.Where(e => e.End <= now && e.End > now.AddHours(-6)).MaxBy(e => e.End);
+        return last == null ? [] : [last];
+    }
+}

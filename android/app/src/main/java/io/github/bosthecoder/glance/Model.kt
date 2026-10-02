@@ -132,6 +132,28 @@ object Retime {
     const val LATE = 2 * MIN
 }
 
+/**
+ * What to stretch after delaying an event due at [due]: everything on then or now (so the one that ran over into it
+ * counts), or failing that the event that ended last (in the past 6 hours). Extended by the delay, it runs on until
+ * the delayed event now starts. [skip]: the delayed event's ids.
+ */
+fun extendable(events: List<Ev>, skip: Set<Long>, now: Long, due: Long): List<Ev> {
+    val timed = events.filter { !it.allDay && it.eventId !in skip }
+    val on = timed.filter { it.begin <= now && it.end >= minOf(now, due) }
+    return on.ifEmpty { listOfNotNull(timed.filter { it.end <= now && it.end > now - 6 * 60 * MIN }.maxByOrNull { it.end }) }
+}
+
+/**
+ * "I've answered this alert", passed between the phone and Windows over ntfy.sh (docs/android.md#on-both-devices).
+ * Both apps work out the same topic from the Google account and the same key from an event's title and start minute,
+ * so nothing needs pairing and no titles leave the device. Windows' Sync class must match these exactly.
+ */
+object Sync {
+    fun key(title: String, begin: Long) = sha("$title|${begin / MIN}").take(16)
+    fun topic(account: String) = "glance-" + sha("glance-sync:${account.lowercase()}").take(20)
+    private fun sha(s: String) = java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+}
+
 /** "25m", "1h", "1h 5m": same as the Windows app. */
 fun dur(ms: Long): String {
     val m = maxOf(1L, (ms + MIN - 1) / MIN)

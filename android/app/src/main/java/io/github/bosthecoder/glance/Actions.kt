@@ -63,17 +63,21 @@ object Actions {
      * Moves the start of this occurrence of [e] to [begin] and keeps its end, so nothing after it shifts: a delay, or
      * starting it early.
      */
-    fun move(ctx: Context, e: Ev, begin: Long): JSONObject {
-        val entry = base("move", e).put("newBegin", begin)
+    fun move(ctx: Context, e: Ev, begin: Long) = retime(ctx, base("move", e).put("newBegin", begin), e, begin, e.end)
+
+    /** Pushes the end of this occurrence of [e] to [end], after delaying what comes next. */
+    fun extend(ctx: Context, e: Ev, end: Long) = retime(ctx, base("extend", e).put("newEnd", end), e, e.begin, end)
+
+    private fun retime(ctx: Context, entry: JSONObject, e: Ev, begin: Long, end: Long): JSONObject {
         return log(ctx, runCatching {
             val s = series(ctx, e.eventId) ?: error("event ${e.eventId} not found")
-            val times = ContentValues().apply { put(Events.DTSTART, begin); put(Events.DTEND, e.end) }
+            val times = ContentValues().apply { put(Events.DTSTART, begin); put(Events.DTEND, end) }
             if (s.getBoolean("recurring")) {
                 // The exception takes the series' length on insert (the provider refuses an explicit DTEND there),
                 // so its end is put back afterwards.
                 val id = exception(ctx, e, ContentValues().apply { put(Events.DTSTART, begin) })
                 entry.put("how", "exception").put("target", id)
-                update(ctx, id, times)
+                update(ctx, id, times)   // also sets the end
             } else {
                 update(ctx, e.eventId, times)
                 entry.put("how", "times").put("target", e.eventId)

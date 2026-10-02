@@ -2,6 +2,7 @@ package io.github.bosthecoder.glance
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -42,7 +43,37 @@ class StartScreen : Activity() {
         private var live: StartScreen? = null
         private fun Intent.id() = getLongExtra("id", 0)
         private fun Intent.soft() = getBooleanExtra("soft", false)
+        private fun Intent.key() = Sync.key(getStringExtra("title") ?: "", getLongExtra("begin", 0))
+        /** Keys this phone sent, so its own message coming back from ntfy doesn't close the next page. */
+        private val sent = HashSet<String>()
+
+        /** The page being acted on here: its own change mustn't close it while it asks what to extend. */
+        private var acting: Intent? = null
+
+        /** Takes the pages matching [gone] off the queue (and their pop-ups), then shows what's left. */
+        private fun drop(ctx: Context, gone: (Intent) -> Boolean) {
+            val first = queue.firstOrNull()
+            val out = queue.filter { it !== acting && gone(it) }.toSet()
+            if (out.isEmpty()) return
+            queue.removeAll(out)
+            out.forEach { NotificationManagerCompat.from(ctx).cancel("start", it.id().toInt()) }
+            if (first in out && OverlayService.running) ctx.startService(Intent(ctx, OverlayService::class.java).setAction(OverlayService.STOP_ALARM))
+            live?.let { if (queue.isEmpty()) it.finish() else if (first in out) it.show() }
+        }
+
+        /**
+         * Answered on Windows at [at]: close it here too. Only pages already up then: an answer to the event's reminder
+         * mustn't close its start page that came later.
+         */
+        fun remote(ctx: Context, key: String, at: Long) { if (key !in sent) drop(ctx) { it.key() == key && it.getLongExtra("queuedAt", 0) <= at } }
+
+        /** The calendar changed (say Windows delayed or skipped it): pages for occurrences that no longer exist go. */
+        fun gone(ctx: Context, events: List<Ev>) {
+            if (events.isNotEmpty()) drop(ctx) { i -> events.none { it.eventId == i.getLongExtra("eventId", 0) && it.begin == i.getLongExtra("begin", 0) } }
+        }
+
         fun enqueue(i: Intent) {
+            if (!i.hasExtra("queuedAt")) i.putExtra("queuedAt", System.currentTimeMillis())
             if (queue.any { it.id() == i.id() && it.soft() == i.soft() }) return
             if (!i.soft()) queue.removeAll { it.id() == i.id() && it.soft() }   // the start replaces its unanswered reminder
             queue += i
@@ -51,8 +82,12 @@ class StartScreen : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); live = this; enqueue(intent); show() }
-    override fun onStart() { super.onStart(); OverlayService.hide(true) }
-    override fun onStop() { OverlayService.hide(false); super.onStop() }
+    private var stopListening: (() -> Unit)? = null
+    override fun onStart() {
+        super.onStart(); OverlayService.hide(true)
+        stopListening = Relay.listen(applicationContext) { k, at -> runOnUiThread { remote(this, k, at) } }
+    }
+    override fun onStop() { stopListening?.invoke(); OverlayService.hide(false); super.onStop() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); enqueue(intent); show() }   // queued behind the current one
     override fun onDestroy() { if (live === this) live = null; if (isFinishing) queue.clear(); super.onDestroy() }   // Back: drop the rest rather than replay them later
 
@@ -65,13 +100,6 @@ class StartScreen : Activity() {
         val started = begin <= now
         val late = Retime.late(ev, now)
         val soft = i.soft()
-        fun button(s: String, bg: Int, weight: Boolean = false, height: Int = 60, onClick: () -> Unit) = Button(this).apply {
-            text = s; isAllCaps = false; setTextColor(Color.WHITE); textSize = if (height > 60) 22f else 18f
-            background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(bg) }
-            layoutParams = (if (weight) LinearLayout.LayoutParams(0, dp(height), 1f).apply { marginEnd = dp(8) }
-                else LinearLayout.LayoutParams(MATCH_PARENT, dp(height))).apply { topMargin = dp(12) }
-            setOnClickListener { onClick() }
-        }
         val head = when {
             late -> "▶  STARTED ${dur(now - begin).uppercase()} AGO"
             started && !soft -> "▶  NOW"
@@ -114,22 +142,60 @@ class StartScreen : Activity() {
         })
     }
 
+    private fun button(s: String, bg: Int, weight: Boolean = false, height: Int = 60, onClick: () -> Unit) = Button(this).apply {
+        text = s; isAllCaps = false; setTextColor(Color.WHITE); textSize = if (height > 60) 22f else 18f
+        background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(bg) }
+        layoutParams = (if (weight) LinearLayout.LayoutParams(0, dp(height), 1f).apply { marginEnd = dp(8) }
+            else LinearLayout.LayoutParams(MATCH_PARENT, dp(height))).apply { topMargin = dp(12) }
+        setOnClickListener { onClick() }
+    }
+
+    private fun answered(key: String) { sent += key; Relay.send(applicationContext, key) }
+
     private var pending: (() -> JSONObject)? = null
 
     /** Runs a calendar change off the main thread, says how it went, then closes. Asks for write access first if needed. */
     private fun act(change: () -> JSONObject) {
         if (!canWrite(this)) { pending = change; requestPermissions(arrayOf(Manifest.permission.WRITE_CALENDAR), 1); return }
+        acting = queue.firstOrNull()
         thread {
             val r = change()
+            val ok = !r.has("error")
+            val delay = if (ok && r.getString("kind") == "move") r.getLong("newBegin") - r.getLong("begin") else 0
+            // Delayed: offer to stretch what you're on (or just finished) by as much, so it runs on until this starts.
+            val stretch = if (delay > 0) extendable(Cal.events(this, Prefs(this).chosenCalendars(this)),
+                setOf(r.getLong("eventId"), r.optLong("target")), System.currentTimeMillis(), r.getLong("begin")) else emptyList()
             runOnUiThread {
                 val msg = r.optString("error").takeIf { it.isNotEmpty() }?.let { "Couldn't change it: ${it.substringAfter(": ")}" }
                     ?: if (r.getString("kind") == "move") "Starts at ${hm(r.getLong("newBegin"))}" else "Skipped"
+                if (ok) answered(Sync.key(r.getString("title"), r.getLong("begin")))
                 // Its alerts already due at the new time (the start, for Start now; "in 5m" after +5m) aren't news.
-                if (!r.has("error") && r.getString("kind") == "move") OverlayService.moved(r.getLong("target"), r.getLong("newBegin"))
-                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-                dismiss()
+                if (ok && r.getString("kind") == "move") OverlayService.moved(r.getLong("target"), r.getLong("newBegin"))
+                if (stretch.isNotEmpty()) extend(msg, delay, stretch)
+                else { Toast.makeText(this, msg, Toast.LENGTH_LONG).show(); dismiss(send = false) }
             }
         }
+    }
+
+    /** After a delay: "Extend what you're on?", one button per event, each pushing its end back by [delay]. */
+    private fun extend(msg: String, delay: Long, options: List<Ev>) {
+        setContentView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFF17213A.toInt()); setPadding(dp(28), dp(48), dp(28), dp(48))
+            addView(text(msg, 30f, Color.WHITE, bold = true).apply { maxLines = 3 })
+            addView(text("Extend what you're on by ${dur(delay)}?", 20f, 0xB3FFFFFF.toInt()).apply { maxLines = 3; setPadding(0, dp(12), 0, dp(12)) })
+            for (e in options) addView(button("${e.title}  ·  until ${hm(e.end)} → ${hm(e.end + delay)}", 0xFF22305A.toInt()) {
+                thread {
+                    val r = Actions.extend(this@StartScreen, e, e.end + delay)
+                    runOnUiThread {
+                        Toast.makeText(this@StartScreen, r.optString("error").takeIf { it.isNotEmpty() }?.let { "Couldn't extend it: ${it.substringAfter(": ")}" }
+                            ?: "${e.title} now runs until ${hm(e.end + delay)}", Toast.LENGTH_LONG).show()
+                        dismiss(send = false)
+                    }
+                }
+            }.apply { isAllCaps = false; maxLines = 2 })
+            addView(button("No thanks", 0x1AFFFFFF, height = 72) { dismiss(send = false) })
+        })
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -137,8 +203,10 @@ class StartScreen : Activity() {
         if (p != null && canWrite(this)) act(p)
     }
 
-    /** Done with the one on screen: on to the next queued start, or close. */
-    private fun dismiss() {
+    /** Done with the one on screen: on to the next queued start, or close. [send]: tell Windows it's answered. */
+    private fun dismiss(send: Boolean = true) {
+        acting = null
+        if (send) queue.firstOrNull()?.let { answered(it.key()) }
         // Only a running widget can be buzzing; starting the service here would switch the widget on.
         if (OverlayService.running) startService(Intent(this, OverlayService::class.java).setAction(OverlayService.STOP_ALARM))
         queue.removeFirstOrNull()?.let { NotificationManagerCompat.from(this).cancel("start", it.getLongExtra("id", 0).toInt()) }

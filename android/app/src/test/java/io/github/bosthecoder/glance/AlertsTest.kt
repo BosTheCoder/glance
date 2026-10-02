@@ -142,4 +142,24 @@ class AlertsTest {
         assertTrue(Alert.Starting(ev(42, 0, 30)).stale(moved, 5))     // Start now: begins at the moment it was moved
         assertFalse(Alert.Starting(at(5)).stale(moved, 5))           // the delayed start itself still fires
     }
+
+    // Fails if: a delay offers to extend the delayed event itself or an all-day one, misses one of several events on
+    // now, or offers nothing when you're between events.
+    @Test fun extendOffersWhatsOnElseTheLastToEnd() {
+        val a = ev(50, -30, 60); val b = ev(51, -10, 20); val next = ev(52, 0, 30).copy(eventId = 52)
+        val all = listOf(a.copy(eventId = 50), b.copy(eventId = 51), next, ev(53, -600, 1440, allDay = true).copy(eventId = 53))
+        assertEquals(listOf(50L, 51L), extendable(all, setOf(52), t0, t0).map { it.eventId })
+        val ranOver = ev(57, -20, 20).copy(eventId = 57)              // ended just as the delayed one was due
+        assertEquals(listOf(57L), extendable(listOf(ranOver, next), setOf(52), t0 + 7 * MIN, t0).map { it.eventId })   // delayed late
+        val earlier = listOf(ev(54, -90, 30).copy(eventId = 54), ev(55, -50, 40).copy(eventId = 55), next)   // ended 10 and 60 min ago
+        assertEquals(listOf(55L), extendable(earlier, setOf(52), t0, t0).map { it.eventId })
+        assertEquals(emptyList<Ev>(), extendable(listOf(ev(56, -900, 30).copy(eventId = 56)), setOf(52), t0, t0))   // too long ago
+    }
+
+    // Fails if: the phone and Windows stop agreing on an event's key or the account's topic (tests/AlertsTests.cs
+    // asserts the same values), so an answer on one no longer clears the other.
+    @Test fun syncKeyAndTopicMatchWindows() {
+        assertEquals("f7937b3128b02ef3", Sync.key("Standup", 1790916000000))
+        assertEquals("glance-d0b01ebc6c9bb6feda89", Sync.topic("Kelvin@Example.com"))
+    }
 }

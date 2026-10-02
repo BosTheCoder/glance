@@ -31,6 +31,7 @@ class HistoryActivity : Activity() {
         val s = when (e.getString("kind")) {
             "snooze" -> "Snoozed $t ${dur(e.getInt("minutes") * MIN)}: ${at(e.getLong("begin"))} → ${hm(e.getLong("begin") + e.getInt("minutes") * MIN)}"
             "move" -> "Moved the start of $t: ${at(e.getLong("begin"))} → ${hm(e.getLong("newBegin"))}"
+            "extend" -> "Extended $t: until ${hm(e.getLong("end"))} → ${hm(e.getLong("newEnd"))}"
             "wontdo" -> "Skipped $t (${at(e.getLong("begin"))})"
             "revert" -> "Reverted $t"
             else -> e.toString()

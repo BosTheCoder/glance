@@ -248,6 +248,7 @@ public partial class MainWindow : Window
                 .Select(c => g.Events(c, DateTime.Today, DateTime.Today.AddDays(s.DaysAhead + 1))));
             events = lists.SelectMany(x => x).ToList();
             lastFetch = DateTime.Now;
+            DropGone();   // pages and banners for events changed elsewhere (say, delayed on the phone)
             error = null;
         }
         catch (NeedsSignIn) { events.Clear(); }

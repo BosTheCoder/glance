@@ -77,4 +77,26 @@ public class AlertsTests
         Assert.True(Retime.Stale(T, T));             // Start now: its own start alert
         Assert.False(Retime.Stale(T, null));         // never moved
     }
+
+    // Fails if: Windows and the phone stop agreeing on an event's key or the account's topic (the Android test asserts
+    // the same values), so an answer on one no longer clears the other.
+    [Fact]
+    public void Sync_key_and_topic_match_android()
+    {
+        Assert.Equal("f7937b3128b02ef3", Sync.Key("Standup", DateTimeOffset.FromUnixTimeMilliseconds(1790916000000).LocalDateTime));
+        Assert.Equal("glance-d0b01ebc6c9bb6feda89", Sync.Topic("Kelvin@Example.com"));
+    }
+
+    // Fails if: a delay offers to extend the delayed event itself, misses one of several on now, or offers nothing between events.
+    [Fact]
+    public void Extend_offers_whats_on_else_the_last_to_end()
+    {
+        var next = Timed("Next", 0, 30) with { Id = "n" };
+        var on = new[] { Timed("A", -30, 60) with { Id = "a" }, Timed("B", -10, 20) with { Id = "b" }, next };
+        Assert.Equal(new[] { "a", "b" }, Sync.Extendable(on, next, T).Select(e => e.Id));
+        var ranOver = Timed("Reading", -20, 20) with { Id = "ro" };   // ended just as Next was due; delayed 7 min late
+        Assert.Equal(new[] { "ro" }, Sync.Extendable(new[] { ranOver, next }, next, T.AddMinutes(7)).Select(e => e.Id));
+        var between = new[] { Timed("Old", -90, 30) with { Id = "o" }, Timed("Recent", -50, 40) with { Id = "r" }, next };
+        Assert.Equal(new[] { "r" }, Sync.Extendable(between, next, T).Select(e => e.Id));
+    }
 }

@@ -86,6 +86,8 @@ While an alert is showing, the widget stays fully visible. If it was hidden, it 
 - **Skip event** cancels it (just this occurrence of a repeating event). **Dismiss** (the big button for a reminder) closes the page. **Open event** opens it in Google Calendar.
 - After a change, **Undo** is there for a few seconds. Alerts that were already due at the new time are skipped, so +5m doesn't bring an "in 5 min" heads-up straight back.
 
+After a delay it asks whether to extend what you were on by as much: everything still on when the delayed event was due, or the one that ended last. Answering on Windows closes the same alert on the phone and the other way round (over ntfy.sh, with no titles sent; see [docs/android.md](docs/android.md#on-both-devices)).
+
 Click an event that's on now or coming up to get the same page for it. Earlier events still open in Google Calendar. If you signed in before 1.20, Glance could only read your calendar: the first change asks you to sign in again.
 
 <br clear="right">
