@@ -116,44 +116,20 @@ class AlertsTest {
         assertEquals("1h 5m", dur(65 * MIN))
     }
 
-    // Fails if: a delay counts from a start that has already passed (so the new start is in the past and the alert
-    // fires straight back), the end moves, a delay that would swallow the event is offered, or times aren't whole minutes.
-    @Test fun delaysMoveOnlyTheStart() {
-        val e = ev(40, 0, 12)                                        // 12 min long, starts at t0
-        assertEquals(e.begin + 5 * MIN, Retime.delayed(e, 5, t0))
-        assertEquals(t0 + 7 * MIN + 2 * MIN, Retime.delayed(e, 2, t0 + 7 * MIN + 30_000))   // seen late: from now, to the minute
-        assertEquals(listOf(2, 5, 10), Retime.delays(e, t0))         // 15 would start after it ends
-        assertEquals(listOf(2), Retime.delays(e, t0 + 8 * MIN))
-        assertEquals(t0 + 3 * MIN, Retime.startNow(t0 + 3 * MIN + 59_000))
-        assertFalse(Retime.late(e, t0 + 90_000))                     // answered within a minute or so: on time
-        assertTrue(Retime.late(e, t0 + 2 * MIN))
-    }
-
-    // Fails if: delaying by less than the heads-up window still pops "in 5m" straight away, a longer delay loses its
-    // heads-up, a reminder that's already passed for the new time fires anyway, or Start now gets its own start alert.
-    @Test fun alertsAlreadyDueWhenMovedAreStale() {
-        val moved = t0
-        fun at(delay: Int) = ev(41, delay, 30)                       // the event after "Delay +delay" at t0
-        assertTrue(Alert.Coming(at(5), true, t0 + 5 * MIN).stale(moved, 5))
-        assertTrue(Alert.Coming(at(2), true, t0 + 2 * MIN).stale(moved, 5))
-        assertFalse(Alert.Coming(at(10), true, t0 + 10 * MIN).stale(moved, 5))
-        assertTrue(Alert.Reminder(at(5), 10).stale(moved, 5))
-        assertFalse(Alert.Reminder(at(15), 10).stale(moved, 5))
-        assertTrue(Alert.Starting(ev(42, 0, 30)).stale(moved, 5))     // Start now: begins at the moment it was moved
-        assertFalse(Alert.Starting(at(5)).stale(moved, 5))           // the delayed start itself still fires
-    }
-
-    // Fails if: a delay offers to extend the delayed event itself or an all-day one, misses one of several events on
-    // now, or offers nothing when you're between events.
-    @Test fun extendOffersWhatsOnElseTheLastToEnd() {
-        val a = ev(50, -30, 60); val b = ev(51, -10, 20); val next = ev(52, 0, 30).copy(eventId = 52)
-        val all = listOf(a.copy(eventId = 50), b.copy(eventId = 51), next, ev(53, -600, 1440, allDay = true).copy(eventId = 53))
-        assertEquals(listOf(50L, 51L), extendable(all, setOf(52), t0, t0).map { it.eventId })
-        val ranOver = ev(57, -20, 20).copy(eventId = 57)              // ended just as the delayed one was due
-        assertEquals(listOf(57L), extendable(listOf(ranOver, next), setOf(52), t0 + 7 * MIN, t0).map { it.eventId })   // delayed late
-        val earlier = listOf(ev(54, -90, 30).copy(eventId = 54), ev(55, -50, 40).copy(eventId = 55), next)   // ended 10 and 60 min ago
-        assertEquals(listOf(55L), extendable(earlier, setOf(52), t0, t0).map { it.eventId })
-        assertEquals(emptyList<Ev>(), extendable(listOf(ev(56, -900, 30).copy(eventId = 56)), setOf(52), t0, t0))   // too long ago
+    // Fails if: a snooze fires early, twice, for an event that was moved, skipped or is over, or for a reminder whose
+    // event has since started; or comes back with the event as it was rather than as it is now.
+    @Test fun snoozeComesBackOnceWhileItStillMatters() {
+        val e = ev(60, 0, 30); val r = ev(61, 10, 30); val gone = ev(62, 0, 30); val over = ev(63, -25, 30)
+        val snoozed = mutableMapOf<Alert, Long>(Alert.Starting(e) to t0 + 5 * MIN, Alert.Reminder(r, 0) to t0 + 5 * MIN,
+            Alert.Starting(gone) to t0 + 5 * MIN, Alert.Starting(over) to t0 + 5 * MIN)
+        val renamed = e.copy(title = "renamed")
+        val now = listOf(renamed, r, over)                        // gone was skipped
+        assertEquals(emptyList<Alert>(), Snooze.due(snoozed, now, t0 + 4 * MIN))
+        assertEquals(listOf<Alert>(Alert.Starting(renamed), Alert.Reminder(r, 0)), Snooze.due(snoozed, now, t0 + 5 * MIN))
+        assertTrue(snoozed.isEmpty())
+        snoozed[Alert.Reminder(r, 0)] = t0 + 12 * MIN             // snoozed past its start: the start alert covers it
+        assertEquals(emptyList<Alert>(), Snooze.due(snoozed, now, t0 + 12 * MIN))
+        assertEquals(listOf(2, 5), Snooze.options(e, t0 + 20 * MIN))   // only lengths that come back before it ends
     }
 
     // Fails if: the phone and Windows stop agreing on an event's key or the account's topic (tests/AlertsTests.cs

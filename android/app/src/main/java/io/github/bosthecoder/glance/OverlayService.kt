@@ -196,13 +196,8 @@ class OverlayService : Service() {
         private val BUZZ = longArrayOf(0, 500, 200, 500)
         private val ALARM = longArrayOf(0, 800, 400)   // repeats from the start until stopped
         const val STOP_ALARM = "stopAlarm"
-        /** (event id, new start) -> when it was moved on StartScreen; see [Alert.stale]. Main thread. */
-        private val movedAt = HashMap<Pair<Long, Long>, Long>()
-        fun moved(eventId: Long, begin: Long) {
-            val now = System.currentTimeMillis()
-            movedAt.values.removeAll { it < now - 24 * 60 * MIN }
-            movedAt[eventId to begin] = now
-        }
+        /** Snoozed on StartScreen: [a] fires again at [at] (see [Snooze.due]). Main thread. */
+        fun snooze(a: Alert, at: Long) { self?.run { snoozed[a] = at; tick() } }
     }
 
     private lateinit var wm: WindowManager
@@ -226,6 +221,7 @@ class OverlayService : Service() {
     private var events = emptyList<Ev>()
     private var banner: Alert? = null
     private var alarm: Ev? = null   // the start it's buzzing for, like an alarm (Prefs.startAlarm)
+    private val snoozed = HashMap<Alert, Long>()   // alert -> when it comes back
     private val stopAlarmR = Runnable { stopAlarm() }
     private val vibrator by lazy {
         if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
@@ -566,7 +562,8 @@ class OverlayService : Service() {
     private fun tick() {
         h.removeCallbacks(tickR)
         val now = System.currentTimeMillis()
-        for (a in tracker.due(events, now)) alert(a, now)
+        for (a in tracker.due(events, now) + Snooze.due(snoozed, events, now)) alert(a, now)
+        StartScreen.ended(this, now)
         refreshTrips(now)
         Plan.coming(events, now, prefs.headsUp)?.let {
             if (it.at != comingAt) {
@@ -583,11 +580,11 @@ class OverlayService : Service() {
         var next = now + 30_000
         Plan.nextMoment(events, now, prefs.headsUp)?.let { next = minOf(next, it) }
         if (banner is Alert.Starting) next = minOf(next, bannerUntil)
+        snoozed.values.minOrNull()?.let { next = minOf(next, it) }
         h.postDelayed(tickR, (next - now).coerceAtLeast(500))
     }
 
     private fun alert(a: Alert, now: Long, show: Boolean = true) {
-        if (movedAt[a.ev.eventId to a.ev.begin]?.let { a.stale(it, prefs.headsUp) } == true) return
         if (show) banner = a
         if (a is Alert.Starting) bannerUntil = now + 20_000
         if (a is Alert.Starting || a is Alert.Coming) {
@@ -599,7 +596,7 @@ class OverlayService : Service() {
             }
         }
         chime()
-        if (a is Alert.Starting && prefs.startAlarm != 0) ring(a.ev)
+        if (a is Alert.Starting && prefs.startAlarm != 0 && !quiet()) ring(a.ev)
         if (a is Alert.Starting || a is Alert.Coming && a.starting || a is Alert.Reminder && prefs.fullScreen) popUp(a, now)
         // In use: open the full-screen page straight away (the overlay permission allows starting it from here).
         // Locked or screen off: the notification's full-screen intent does it, as an alarm clock's does.
@@ -610,16 +607,15 @@ class OverlayService : Service() {
         }
     }
 
-    /**
-     * Every alert: a buzz, plus the chosen sound when the ringer is on. Vibrate mode buzzes only; silent mode and
-     * Do Not Disturb get neither.
-     */
+    /** Silent mode or Do Not Disturb: no buzz and no sound, not even the start alarm's. */
+    private fun quiet() = getSystemService(AudioManager::class.java).ringerMode == AudioManager.RINGER_MODE_SILENT ||
+        getSystemService(NotificationManager::class.java).currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL
+
+    /** Every alert: a buzz, plus the chosen sound when the ringer is on. Vibrate mode buzzes only; [quiet] gets neither. */
     private fun chime() {
-        val ringer = getSystemService(AudioManager::class.java).ringerMode
-        if (ringer == AudioManager.RINGER_MODE_SILENT ||
-            getSystemService(NotificationManager::class.java).currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return
+        if (quiet()) return
         if (prefs.vibrate) buzz(VibrationEffect.createWaveform(BUZZ, -1), alarm = false)
-        if (ringer == AudioManager.RINGER_MODE_NORMAL && prefs.sound.isNotEmpty()) runCatching {
+        if (getSystemService(AudioManager::class.java).ringerMode == AudioManager.RINGER_MODE_NORMAL && prefs.sound.isNotEmpty()) runCatching {
             RingtoneManager.getRingtone(this, prefs.sound.toUri())?.apply {
                 audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT).build()
             }?.play()
@@ -628,7 +624,7 @@ class OverlayService : Service() {
 
     private fun buzz(effect: VibrationEffect, alarm: Boolean) {
         // Background apps only vibrate with a notification, alarm or ringtone usage (Vibrator docs).
-        // Alarm usage also buzzes on silent and through Do Not Disturb when alarms are allowed.
+        // Alarm usage also buzzes on silent and through Do Not Disturb when alarms are allowed, hence [quiet] before [ring].
         if (Build.VERSION.SDK_INT >= 33) vibrator.vibrate(effect, VibrationAttributes.createForUsage(
             if (alarm) VibrationAttributes.USAGE_ALARM else VibrationAttributes.USAGE_NOTIFICATION))
         else @Suppress("DEPRECATION") vibrator.vibrate(effect, AudioAttributes.Builder().setUsage(
@@ -943,8 +939,8 @@ class OverlayService : Service() {
     }
 
     /**
-     * An upcoming event, or the one on now, tapped: its page to start it now (move its start to now), delay it, skip it
-     * or open it. Upcoming ones get the soft blue page, the one on now the green start page.
+     * An upcoming event, or the one on now, tapped: its page to snooze, skip or open it. Upcoming
+     * ones get the soft blue page, the one on now the green start page.
      */
     private fun page(e: Ev) {
         runCatching { startActivity(StartScreen.intent(this, e, eventIntent(e), soft = e.begin > System.currentTimeMillis())) }

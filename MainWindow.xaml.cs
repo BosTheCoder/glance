@@ -383,12 +383,9 @@ public partial class MainWindow : Window
         {
             // Once per change: pulse the whole widget (so the side strip gets it too), chime, and come back if hidden.
             headsUpFor = coming.At;
-            if (!Retime.Stale(coming.At.AddMinutes(-s.HeadsUpMinutes), MovedAt(coming.Event)))   // not for a start you just set
-            {
             Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
             if (!IsVisible && s.AlertsReveal) Show();
             Attention(null);
-            }
         }
         // Docked, the banners don't fit, so the strip's rim takes the alert's colour instead.
         Color? rim = s.Docked != null && banners.Count > 0 ? (banners[^1].Kind == AlertKind.Reminder ? Blue : Green) : headsUp ? Amber : null;
@@ -869,12 +866,13 @@ public partial class MainWindow : Window
     {
         // A "starting" banner stays until you've hovered the widget (seen it), at most 10 min; a reminder until clicked or its event starts.
         banners.RemoveAll(a => a.Kind == AlertKind.Starting ? now - a.At > TimeSpan.FromMinutes(10) : now >= a.Event.Start);
+        Drop(p => p.Ev.End <= now);   // a page whose event is over: nothing left to start
         if (lastFetch == DateTime.MinValue) return;   // nothing loaded yet; don't advance past alerts we can't see
 
         var since = alertsCheckedTo < now.AddMinutes(-2) ? now.AddMinutes(-2) : alertsCheckedTo;   // after sleep, don't replay the day
         alertsCheckedTo = now;
         var fresh = Alerts.Due(events, since, now, s.Reminders);
-        fresh.RemoveAll(a => Retime.Stale(a.At, MovedAt(a.Event)));   // At: the moment it fell due
+        fresh.AddRange(Snooze.Due(snoozed, events, now));
         if (fresh.Count == 0) return;
         if (s.BigAlerts > 0) foreach (var a in fresh) ShowPage(a.Event, soft: a.Kind == AlertKind.Reminder, bell: true);
 

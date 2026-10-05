@@ -17,11 +17,11 @@ fun canWrite(ctx: Context) =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
 /**
- * Move (delay or start now) and Won't do (Skip), written to the calendar provider (which syncs them to Google), each logged to history.json so
- * it can be reverted. A repeating event is never changed as a whole: its occurrence gets an exception (moved, or
- * cancelled), and reverting puts that exception back to how the occurrence was. A one-off event is moved in place, or
- * deleted after keeping a copy of its fields and reminders so revert can insert it again (as a new event: guests and
- * conferencing links don't come back).
+ * Won't do (Skip), written to the calendar provider (which syncs it to Google) and logged to history.json so it can
+ * be reverted. A repeating event is never changed as a whole: its occurrence gets a cancelled exception, and
+ * reverting puts that exception back to how the occurrence was. A one-off event is deleted after keeping a copy of
+ * its fields and reminders so revert can insert it again (as a new event: guests and conferencing links don't come
+ * back). Moves logged before 1.22 (Delay and Start now, since replaced by Snooze) can still be reverted.
  */
 object Actions {
     private const val TAG = "Glance"
@@ -58,32 +58,6 @@ object Actions {
 
     private fun base(kind: String, e: Ev) = JSONObject().put("kind", kind).put("title", e.title)
         .put("begin", e.begin).put("end", e.end).put("eventId", e.eventId)
-
-    /**
-     * Moves the start of this occurrence of [e] to [begin] and keeps its end, so nothing after it shifts: a delay, or
-     * starting it early.
-     */
-    fun move(ctx: Context, e: Ev, begin: Long) = retime(ctx, base("move", e).put("newBegin", begin), e, begin, e.end)
-
-    /** Pushes the end of this occurrence of [e] to [end], after delaying what comes next. */
-    fun extend(ctx: Context, e: Ev, end: Long) = retime(ctx, base("extend", e).put("newEnd", end), e, e.begin, end)
-
-    private fun retime(ctx: Context, entry: JSONObject, e: Ev, begin: Long, end: Long): JSONObject {
-        return log(ctx, runCatching {
-            val s = series(ctx, e.eventId) ?: error("event ${e.eventId} not found")
-            val times = ContentValues().apply { put(Events.DTSTART, begin); put(Events.DTEND, end) }
-            if (s.getBoolean("recurring")) {
-                // The exception takes the series' length on insert (the provider refuses an explicit DTEND there),
-                // so its end is put back afterwards.
-                val id = exception(ctx, e, ContentValues().apply { put(Events.DTSTART, begin) })
-                entry.put("how", "exception").put("target", id)
-                update(ctx, id, times)   // also sets the end
-            } else {
-                update(ctx, e.eventId, times)
-                entry.put("how", "times").put("target", e.eventId)
-            }
-        }.fold({ entry }, { entry.put("error", it.toString()) }))
-    }
 
     /** Cancels this occurrence of [e]: a cancelled exception for a repeating event, otherwise deletes it (keeping a copy). */
     fun wontDo(ctx: Context, e: Ev): JSONObject {

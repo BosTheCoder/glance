@@ -215,14 +215,6 @@ public class GoogleCal
         return list;
     }
 
-    /// Moves [e]'s start and keeps its end. An occurrence's own id makes Google change only that occurrence.
-    public Task Move(Ev e, DateTime start) => Send(HttpMethod.Patch, e,
-        new JsonObject { ["start"] = new JsonObject { ["dateTime"] = new DateTimeOffset(start).ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture) } });
-
-    /// Pushes [e]'s end to [end], after delaying what comes next.
-    public Task Extend(Ev e, DateTime end) => Send(HttpMethod.Patch, e,
-        new JsonObject { ["end"] = new JsonObject { ["dateTime"] = new DateTimeOffset(end).ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture) } });
-
     /// Cancels [e]: just this occurrence of a repeating event. [Restore] undoes it.
     public Task Skip(Ev e) => Send(HttpMethod.Delete, e);
     public Task Restore(Ev e) => Send(HttpMethod.Patch, e, new JsonObject { ["status"] = "confirmed" });

@@ -20,11 +20,10 @@ import kotlin.concurrent.thread
 /**
  * Full-screen "Now: title" when an event starts, like an alarm clock: it turns the screen on and shows over the lock
  * screen (showWhenLocked / turnScreenOn in the manifest). Opened by the start notification's full-screen intent, or
- * straight from the service when the phone is in use. Start now also stops a "keep buzzing" alarm.
- * A reminder, or an upcoming event tapped in the widget, opens the same page in a softer blue ("soft"), where Start
- * now moves the event's start to now; so does a start answered late, or the event on now tapped in the widget.
- * Delay moves the start later; neither touches the end.
- * Several at once queue up and show one after another; each is started, delayed or skipped in turn.
+ * straight from the service when the phone is in use. Start now closes it and stops a "keep buzzing" alarm.
+ * A reminder, or an upcoming event tapped in the widget, opens the same page in a softer blue ("soft").
+ * Snooze closes it and alerts again a few minutes later; only Skip changes the calendar. A page closes itself once
+ * its event is over. Several at once queue up and show one after another; each is answered in turn.
  */
 class StartScreen : Activity() {
     companion object {
@@ -47,7 +46,7 @@ class StartScreen : Activity() {
         /** Keys this phone sent, so its own message coming back from ntfy doesn't close the next page. */
         private val sent = HashSet<String>()
 
-        /** The page being acted on here: its own change mustn't close it while it asks what to extend. */
+        /** The page being skipped here: its own change mustn't close it before it says how it went. */
         private var acting: Intent? = null
 
         /** Takes the pages matching [gone] off the queue (and their pop-ups), then shows what's left. */
@@ -67,6 +66,9 @@ class StartScreen : Activity() {
          */
         fun remote(ctx: Context, key: String, at: Long) { if (key !in sent) drop(ctx) { it.key() == key && it.getLongExtra("queuedAt", 0) <= at } }
 
+        /** Pages whose event is over: nothing left to start. */
+        fun ended(ctx: Context, now: Long) = drop(ctx) { it.getLongExtra("end", 0) <= now }
+
         /** The calendar changed (say Windows delayed or skipped it): pages for occurrences that no longer exist go. */
         fun gone(ctx: Context, events: List<Ev>) {
             if (events.isNotEmpty()) drop(ctx) { i -> events.none { it.eventId == i.getLongExtra("eventId", 0) && it.begin == i.getLongExtra("begin", 0) } }
@@ -84,7 +86,7 @@ class StartScreen : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); live = this; enqueue(intent); show() }
     private var stopListening: (() -> Unit)? = null
     override fun onStart() {
-        super.onStart(); OverlayService.hide(true)
+        super.onStart(); OverlayService.hide(true); ended(this, System.currentTimeMillis())
         stopListening = Relay.listen(applicationContext) { k, at -> runOnUiThread { remote(this, k, at) } }
     }
     override fun onStop() { stopListening?.invoke(); OverlayService.hide(false); super.onStop() }
@@ -98,7 +100,7 @@ class StartScreen : Activity() {
         val begin = i.getLongExtra("begin", 0); val end = i.getLongExtra("end", 0)
         val ev = Ev(i.id(), i.getStringExtra("title") ?: "", begin, end, false, color, eventId = i.getLongExtra("eventId", 0))
         val started = begin <= now
-        val late = Retime.late(ev, now)
+        val late = now - begin >= 2 * MIN
         val soft = i.soft()
         val head = when {
             late -> "▶  STARTED ${dur(now - begin).uppercase()} AGO"
@@ -118,27 +120,20 @@ class StartScreen : Activity() {
                 IntentCompat.getParcelableExtra(i, "open", Intent::class.java)?.let { runCatching { startActivity(it) } }
                 dismiss()
             })
-            val delays = Retime.delays(ev, now)
-            if (delays.isNotEmpty()) {
-                addView(text("DELAY START", 13f, 0x8CFFFFFF.toInt(), bold = true).apply { letterSpacing = 0.1f; setPadding(0, dp(24), 0, 0) })
+            val snoozes = Snooze.options(ev, now)
+            if (snoozes.isNotEmpty()) {
+                addView(text("SNOOZE", 13f, 0x8CFFFFFF.toInt(), bold = true).apply { letterSpacing = 0.1f; setPadding(0, dp(24), 0, 0) })
                 addView(LinearLayout(context).apply {
-                    delays.forEach { m -> addView(button("+${m}m", 0xFF22305A.toInt(), weight = true) {
-                        act { Actions.move(this@StartScreen, ev, Retime.delayed(ev, m, System.currentTimeMillis())) }
+                    snoozes.forEach { m -> addView(button("${m}m", 0xFF22305A.toInt(), weight = true) {
+                        OverlayService.snooze(if (soft) Alert.Reminder(ev, 0) else Alert.Starting(ev), System.currentTimeMillis() + m * MIN)
+                        dismiss()
                     }) }
                 })
             }
-            // Just started: Start now just says you've started. Not yet, or a while ago: it moves the start to now.
-            fun startNow(big: Boolean) = button("Start now", 0xFF1F8F5F.toInt(), weight = !big, height = if (big) 72 else 60) {
-                if (started && !late) dismiss() else act { Actions.move(this@StartScreen, ev, Retime.startNow(System.currentTimeMillis())) }
-            }
-            // The big button is the likeliest next step: for a reminder that's carrying on (Dismiss), otherwise Start now.
-            val reminder = soft && i.getBooleanExtra("bell", false)
-            addView(LinearLayout(context).apply {
-                addView(button("Skip event", 0xFF3A1F1F.toInt(), weight = true) { act { Actions.wontDo(this@StartScreen, ev) } })
-                if (reminder) addView(startNow(big = false))
-                else if (soft || late) addView(button("Dismiss", 0x1AFFFFFF, weight = true) { dismiss() })   // late: you did start on time
-            })
-            addView(if (reminder) button("Dismiss", 0xFF2F4A86.toInt(), height = 72) { dismiss() } else startNow(big = true))
+            addView(button("Skip event", 0xFF3A1F1F.toInt()) { act { Actions.wontDo(this@StartScreen, ev) } })
+            // The big button: Dismiss for a reminder or a look ahead, Start now for a start. Both just close the page.
+            addView(if (soft) button("Dismiss", 0xFF2F4A86.toInt(), height = 72) { dismiss() }
+                else button("Start now", 0xFF1F8F5F.toInt(), height = 72) { dismiss() })
         })
     }
 
@@ -160,42 +155,12 @@ class StartScreen : Activity() {
         acting = queue.firstOrNull()
         thread {
             val r = change()
-            val ok = !r.has("error")
-            val delay = if (ok && r.getString("kind") == "move") r.getLong("newBegin") - r.getLong("begin") else 0
-            // Delayed: offer to stretch what you're on (or just finished) by as much, so it runs on until this starts.
-            val stretch = if (delay > 0) extendable(Cal.events(this, Prefs(this).chosenCalendars(this)),
-                setOf(r.getLong("eventId"), r.optLong("target")), System.currentTimeMillis(), r.getLong("begin")) else emptyList()
             runOnUiThread {
-                val msg = r.optString("error").takeIf { it.isNotEmpty() }?.let { "Couldn't change it: ${it.substringAfter(": ")}" }
-                    ?: if (r.getString("kind") == "move") "Starts at ${hm(r.getLong("newBegin"))}" else "Skipped"
-                if (ok) answered(Sync.key(r.getString("title"), r.getLong("begin")))
-                // Its alerts already due at the new time (the start, for Start now; "in 5m" after +5m) aren't news.
-                if (ok && r.getString("kind") == "move") OverlayService.moved(r.getLong("target"), r.getLong("newBegin"))
-                if (stretch.isNotEmpty()) extend(msg, delay, stretch)
-                else { Toast.makeText(this, msg, Toast.LENGTH_LONG).show(); dismiss(send = false) }
+                if (!r.has("error")) answered(Sync.key(r.getString("title"), r.getLong("begin")))
+                Toast.makeText(this, r.optString("error").takeIf { it.isNotEmpty() }?.let { "Couldn't change it: ${it.substringAfter(": ")}" } ?: "Skipped", Toast.LENGTH_LONG).show()
+                dismiss(send = false)
             }
         }
-    }
-
-    /** After a delay: "Extend what you're on?", one button per event, each pushing its end back by [delay]. */
-    private fun extend(msg: String, delay: Long, options: List<Ev>) {
-        setContentView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(0xFF17213A.toInt()); setPadding(dp(28), dp(48), dp(28), dp(48))
-            addView(text(msg, 30f, Color.WHITE, bold = true).apply { maxLines = 3 })
-            addView(text("Extend what you're on by ${dur(delay)}?", 20f, 0xB3FFFFFF.toInt()).apply { maxLines = 3; setPadding(0, dp(12), 0, dp(12)) })
-            for (e in options) addView(button("${e.title}  ·  until ${hm(e.end)} → ${hm(e.end + delay)}", 0xFF22305A.toInt()) {
-                thread {
-                    val r = Actions.extend(this@StartScreen, e, e.end + delay)
-                    runOnUiThread {
-                        Toast.makeText(this@StartScreen, r.optString("error").takeIf { it.isNotEmpty() }?.let { "Couldn't extend it: ${it.substringAfter(": ")}" }
-                            ?: "${e.title} now runs until ${hm(e.end + delay)}", Toast.LENGTH_LONG).show()
-                        dismiss(send = false)
-                    }
-                }
-            }.apply { isAllCaps = false; maxLines = 2 })
-            addView(button("No thanks", 0x1AFFFFFF, height = 72) { dismiss(send = false) })
-        })
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

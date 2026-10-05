@@ -27,19 +27,6 @@ sealed class Alert {
 
 const val MIN = 60_000L
 
-/** When [this] became due. A heads-up's moment is when its window opened, [headsUpMinutes] before the change. */
-fun Alert.dueAt(headsUpMinutes: Int): Long = when (this) {
-    is Alert.Starting -> ev.begin
-    is Alert.Reminder -> ev.begin - minutes * MIN
-    is Alert.Coming -> at - headsUpMinutes * MIN
-}
-
-/**
- * An alert for an event you moved at [movedAt] that was already due then: you've just set that time, so it's not news.
- * Delay 5 min and the "in 5 min" heads-up is stale; delay 15 and it still comes, 5 min before the new start.
- */
-fun Alert.stale(movedAt: Long, headsUpMinutes: Int) = dueAt(headsUpMinutes) <= movedAt
-
 object Plan {
     fun current(events: List<Ev>, now: Long) = events.filter { !it.allDay && it.begin <= now && it.end > now }.sortedBy { it.begin }
     fun upcoming(events: List<Ev>, now: Long) = events.filter { !it.allDay && it.begin > now }.sortedBy { it.begin }
@@ -116,31 +103,27 @@ class AlertTracker(private val windowMs: Long = 2 * MIN) {
     }
 }
 
-/**
- * New start times for the start screen's buttons. Only the start moves; the end stays, so later plans don't shift.
- * Times are whole minutes, as a calendar shows them.
- */
-object Retime {
-    val DELAYS = listOf(2, 5, 10, 15)
-    /** [minutes] after the event's start, or after now if the start has already passed: "I need 5 more minutes". */
-    fun delayed(e: Ev, minutes: Int, now: Long) = maxOf(e.begin, startNow(now)) + minutes * MIN
-    /** The delays that still leave some of the event. */
-    fun delays(e: Ev, now: Long) = DELAYS.filter { delayed(e, it, now) < e.end }
-    fun startNow(now: Long) = now / MIN * MIN
-    /** Started a while ago without you: Start now then moves its start to now instead of just closing the page. */
-    fun late(e: Ev, now: Long) = now - e.begin >= LATE
-    const val LATE = 2 * MIN
-}
+/** The alert page's Snooze: the page comes back [MINUTES] later, and the calendar is left alone. */
+object Snooze {
+    val MINUTES = listOf(2, 5, 10, 15)
+    /** The lengths that come back before the event ends. */
+    fun options(e: Ev, now: Long) = MINUTES.filter { now + it * MIN < e.end }
 
-/**
- * What to stretch after delaying an event due at [due]: everything on then or now (so the one that ran over into it
- * counts), or failing that the event that ended last (in the past 6 hours). Extended by the delay, it runs on until
- * the delayed event now starts. [skip]: the delayed event's ids.
- */
-fun extendable(events: List<Ev>, skip: Set<Long>, now: Long, due: Long): List<Ev> {
-    val timed = events.filter { !it.allDay && it.eventId !in skip }
-    val on = timed.filter { it.begin <= now && it.end >= minOf(now, due) }
-    return on.ifEmpty { listOfNotNull(timed.filter { it.end <= now && it.end > now - 6 * 60 * MIN }.maxByOrNull { it.end }) }
+    /**
+     * Takes the snoozes due by [now] out of [snoozed] (alert -> when it comes back) and returns them to fire again,
+     * with the event as it is now. Dropped instead: an event moved, skipped or over, and a reminder whose event has
+     * started (its start alert has said so).
+     */
+    fun due(snoozed: MutableMap<Alert, Long>, events: List<Ev>, now: Long): List<Alert> =
+        snoozed.filterValues { it <= now }.keys.mapNotNull { a ->
+            snoozed.remove(a)
+            val e = events.firstOrNull { it.id == a.ev.id && it.begin == a.ev.begin }
+            when {
+                e == null -> null
+                a is Alert.Reminder -> a.copy(ev = e).takeIf { now < e.begin }
+                else -> Alert.Starting(e).takeIf { now < e.end }
+            }
+        }
 }
 
 /**

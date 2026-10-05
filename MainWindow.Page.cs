@@ -11,8 +11,9 @@ using System.Windows.Threading;
 namespace Glance;
 
 /// The big alert page in the middle of the screen, Android's StartScreen for the desktop: an event starting (black and
-/// green), or a reminder or a clicked event (calmer blue), with Start now, Delay start, Skip and Open. Topmost but it
-/// doesn't take focus, so typing carries on where it was. Several queue up and show one after another.
+/// green), or a reminder or a clicked event (calmer blue), with Snooze, Skip, Open and Start now (or Dismiss). Only Skip
+/// changes the calendar. Topmost but it doesn't take focus, so typing carries on where it was. Several queue up and
+/// show one after another, and each closes itself once its event is over.
 /// Answering one tells the phone over ntfy.sh (see Sync), and an answer from the phone closes it here.
 public partial class MainWindow
 {
@@ -21,10 +22,7 @@ public partial class MainWindow
     Window? pageWindow;
     bool showingResult;   // the page shows how an action went (with Undo), not the event
     static string K(Ev e) => Sync.Key(e.Title, e.Start);
-    /// (event id, new start) -> when it was moved here; see Retime.Stale.
-    readonly Dictionary<(string?, DateTime), DateTime> moved = new();
-
-    DateTime? MovedAt(Ev e) => moved.TryGetValue((e.Id, e.Start), out var at) ? at : null;
+    readonly List<Alert> snoozed = new();   // At: when it comes back (see Snooze.Due)
 
     /// [soft]: a reminder or a click, not a start. A start replaces a reminder for the same event still waiting.
     void ShowPage(Ev e, bool soft, bool bell)
@@ -145,7 +143,7 @@ public partial class MainWindow
     {
         var now = DateTime.Now;
         var started = e.Start <= now;
-        var late = Retime.Late(e, now);
+        var late = now - e.Start >= TimeSpan.FromMinutes(2);
         var p = new StackPanel { Width = 560, Margin = new(30, 28, 30, 28) };
         var head = late ? $"▶  STARTED {Dur(now - e.Start).ToUpper()} AGO"
             : started ? (soft ? "NOW" : "▶  NOW")
@@ -156,27 +154,21 @@ public partial class MainWindow
         p.Children.Add(Text($"{Time(e.Start)} – {Time(e.End)}  ·  {(started ? Dur(e.End - now) + " left" : Dur(e.End - e.Start))}", 18, 0.7, new(0, 0, 0, 18)));
 
         if (e.Link != null) p.Children.Add(PageButton("Open event", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF), 46, () => { Process.Start(new ProcessStartInfo(e.Link) { UseShellExecute = true }); NextPage(); }));
-        var delays = Retime.Delays(e, now);
-        if (delays.Length > 0)
+        var snoozes = Snooze.Options(e, now);
+        if (snoozes.Length > 0)
         {
-            p.Children.Add(Text("DELAY START", 12, 0.55, new(0, 14, 0, 0)));
+            p.Children.Add(Text("SNOOZE", 12, 0.55, new(0, 14, 0, 0)));
             var row = new UniformGrid { Rows = 1 };
-            foreach (var m in delays) row.Children.Add(PageButton($"+{m}m", Color.FromRgb(0x22, 0x30, 0x5A), 46, () => _ = Act(e, "move", Retime.Delayed(e, m, DateTime.Now))));
+            foreach (var m in snoozes) row.Children.Add(PageButton($"{m}m", Color.FromRgb(0x22, 0x30, 0x5A), 46, () =>
+            {
+                snoozed.Add(new(soft ? AlertKind.Reminder : AlertKind.Starting, e, DateTime.Now.AddMinutes(m)));
+                NextPage();
+            }));
             p.Children.Add(row);
         }
-        // The big button is the likeliest next step: Dismiss for a reminder, otherwise Start now. Just started, Start now
-        // only closes the page; not yet, or a while ago, it moves the start to now.
-        Border StartNow(double h) => PageButton("Start now", Color.FromRgb(0x1F, 0x8F, 0x5F), h, () =>
-        {
-            if (started && !Retime.Late(e, DateTime.Now)) NextPage(); else _ = Act(e, "move", Retime.StartNow(DateTime.Now));
-        });
-        var reminder = soft && bell;
-        var pair = new UniformGrid { Rows = 1 };
-        pair.Children.Add(PageButton("Skip event", Color.FromRgb(0x3A, 0x1F, 0x1F), 46, () => _ = Act(e, "skip", null)));
-        if (reminder) pair.Children.Add(StartNow(46));
-        else if (soft || late) pair.Children.Add(PageButton("Dismiss", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF), 46, NextPage));   // late: you did start on time
-        p.Children.Add(pair);
-        p.Children.Add(reminder ? PageButton("Dismiss", Color.FromRgb(0x2F, 0x4A, 0x86), 58, NextPage) : StartNow(58));
+        p.Children.Add(PageButton("Skip event", Color.FromRgb(0x3A, 0x1F, 0x1F), 46, () => _ = Skip(e)));
+        // The big button: Dismiss for a reminder or a look ahead, Start now for a start. Both just close the page.
+        p.Children.Add(soft ? PageButton("Dismiss", Color.FromRgb(0x2F, 0x4A, 0x86), 58, NextPage) : PageButton("Start now", Color.FromRgb(0x1F, 0x8F, 0x5F), 58, NextPage));
         return p;
     }
 
@@ -194,39 +186,21 @@ public partial class MainWindow
         return b;
     }
 
-    /// Moves [e] to start at [start] ("move") or cancels it ("skip"), then shows how it went, with Undo. After a delay
-    /// it offers to extend what you're on by as much; otherwise the result closes itself after a few seconds.
-    async Task Act(Ev e, string kind, DateTime? start)
+    /// Cancels [e], then shows how it went, with Undo; the result closes itself after a few seconds.
+    async Task Skip(Ev e)
     {
         if (!demo && e.Id == null) { DrawPage(PageMessage("That's a preview, so there's nothing to change.", null)); return; }
-        DrawPage(PageMessage(kind == "move" ? "Changing…" : "Skipping…", null));
+        DrawPage(PageMessage("Skipping…", null));
         try
         {
-            if (!demo) { if (kind == "move") await g.Move(e, start!.Value); else await g.Skip(e); }
+            if (!demo) await g.Skip(e);
             Answered(K(e));
-            var now = e with { Start = start ?? e.Start };
-            Changed(e, kind == "move" ? now : null);
-            if (kind == "move") moved[(e.Id, start!.Value)] = DateTime.Now;
-            var undo = async () =>
+            Changed(e, null);
+            DrawPage(PageMessage($"Skipped {e.Title}", async () =>
             {
-                try
-                {
-                    if (!demo) { if (kind == "move") await g.Move(e, e.Start); else await g.Restore(e); }
-                    Changed(kind == "move" ? now : null, e);
-                    NextPage(false);
-                }
+                try { if (!demo) await g.Restore(e); Changed(null, e); NextPage(false); }
                 catch (Exception x) { DrawPage(PageMessage("Couldn't undo it: " + x.Message, null)); }
-            };
-            var delay = kind == "move" ? start!.Value - e.Start : TimeSpan.Zero;
-            var stretch = delay > TimeSpan.Zero ? Sync.Extendable(events, e, DateTime.Now) : [];
-            var msg = kind == "move" ? $"{e.Title} starts at {Time(start!.Value)}" : $"Skipped {e.Title}";
-            if (stretch.Count > 0)
-            {
-                DrawPage(PageMessage(msg, undo, $"Extend what you're on by {Dur(delay)}?",
-                    stretch.Select(x => ($"{x.Title}  ·  until {Time(x.End)} → {Time(x.End + delay)}", (Func<Task>)(() => Extend(x, x.End + delay)))).ToArray()));
-                return;
-            }
-            DrawPage(PageMessage(msg, undo));
+            }));
             var close = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
             var shown = pages.FirstOrDefault();
             close.Tick += (_, _) => { close.Stop(); if (pages.FirstOrDefault() == shown && showingResult) NextPage(false); };
@@ -240,26 +214,6 @@ public partial class MainWindow
         catch (Exception x) when (x is HttpRequestException or NeedsSignIn or TaskCanceledException)
         {
             DrawPage(PageMessage("Couldn't change it: " + x.Message, null));
-        }
-    }
-
-    /// After a delay: runs [e] on until [end], with Undo.
-    async Task Extend(Ev e, DateTime end)
-    {
-        try
-        {
-            if (!demo) await g.Extend(e, end);
-            var longer = e with { End = end };
-            Changed(e, longer);
-            DrawPage(PageMessage($"{e.Title} now runs until {Time(end)}", async () =>
-            {
-                try { if (!demo) await g.Extend(e, e.End); Changed(longer, e); NextPage(false); }
-                catch (Exception x) { DrawPage(PageMessage("Couldn't undo it: " + x.Message, null)); }
-            }));
-        }
-        catch (Exception x) when (x is HttpRequestException or NeedsSignIn or NeedsWrite or TaskCanceledException)
-        {
-            DrawPage(PageMessage("Couldn't extend it: " + x.Message, null));
         }
     }
 

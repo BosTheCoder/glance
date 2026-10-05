@@ -164,7 +164,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 34 && prefs.fullScreen) permission("Full screen when events start", canFullScreen(this)) {
             overlaySettings.launch(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:$packageName".toUri()))
         }
-        permission("Change events (start now, delay, skip)", canWrite(this)) { askPermission.launch(Manifest.permission.WRITE_CALENDAR) }
+        permission("Change events (skip)", canWrite(this)) { askPermission.launch(Manifest.permission.WRITE_CALENDAR) }
         permission("Location (for travel times)", canLocate(this)) {
             askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }

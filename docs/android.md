@@ -13,7 +13,7 @@ It reads the calendars your phone already syncs from your Google account, so the
    - **Display over other apps**. This opens a system screen: find Glance and switch it on, then go back.
    - **Notifications** (Android 13+). You get the quiet "Glance is floating" one that keeps it running, and the pop-ups when events start.
    - **Full screen when events start** (Android 14+, only if Android hasn't already allowed it). This opens the "Full screen notifications" page: switch Glance on and go back.
-   - **Change events (start now, delay, skip)**, optional. Needed for those buttons on the start screen.
+   - **Change events (skip)**, optional. Needed for Skip on the start screen.
    - **Location (for travel times)**, optional. Travel times then start from where the phone is (see [Travel times](#travel-times)).
 4. Tick the calendars you want. By default it picks the ones that are visible in your calendar app.
 5. Tap **Start floating widget**.
@@ -55,9 +55,9 @@ Settings (same names as the Windows app):
 | Heads-up before a change | 2/5/10 minutes |
 | Vibrate on alerts | On/off (default on): every start, reminder and heads-up buzzes, except in silent mode or Do Not Disturb |
 | **Alert sound** (button) | The sound every alert plays when the ringer is on (default: the phone's notification sound), or None. Vibrate mode buzzes only |
-| **Keep buzzing when an event starts** | Off (default), 30 s, 1/2/5 min, or Until stopped: buzzes on repeat like an alarm, even on silent. Stop it with the pop-up's **Stop**, by swiping the pop-up away, or by touching the widget |
+| **Keep buzzing when an event starts** | Off (default), 30 s, 1/2/5 min, or Until stopped: buzzes on repeat like an alarm, through vibrate mode but not silent mode or Do Not Disturb. Stop it with the pop-up's **Stop**, by swiping the pop-up away, or by touching the widget |
 | **Fill the screen for starts and reminders** | On (default): a full-screen page when an event starts (black and green) and when one of its reminders is due (calmer blue), over the lock screen too (see [Alerts](#alerts)) |
-| **Action history** (button) | Every move and skip, newest first, with **Revert** (see [Start now, Delay and Skip](#start-now-delay-and-skip)) |
+| **Action history** (button) | Every skip (and move, from before 1.22), newest first, with **Revert** (see [Snooze and Skip](#snooze-and-skip)) |
 | **Pop-ups: Android's settings** (button) | Android's page for the pop-up notification ("Event alerts"): on/off and lock-screen display. Its sound and vibration are off on purpose; Glance plays its own, above |
 | **Travel times** | On/off (default on): public transport times for "Travel" events, see [Travel times](#travel-times) |
 | **Get-ready time** | 0/3/5/10 min (default 5): taken off each departure to give the leave time |
@@ -94,31 +94,25 @@ The alerts show inside the pill, card or side strip, and each kind has its own c
 
 **Pop-up for starts.** A reminder, "*title* in 5m" at the heads-up and "Now: *title*" when it starts show as a notification that pops up over whatever is open. Each replaces the one before, and tapping it opens the event. Turn it off with **Pop-ups: Android's settings**.
 
-**Not for a time you just set.** After Delay or Start now, alerts that were already due at the new time are skipped: delay by 2 or 5 minutes and there's no "in 5m" heads-up straight after, delay by 10 or 15 and it still comes 5 minutes before the new start. The start alert itself still fires at the new time (but not after Start now).
+**Full screen for starts.** When an event starts, a full-screen page shows "▶ NOW", the title, its times, **Open event**, **Snooze** (2m, 5m, 10m, 15m), **Skip event** and a big green **Start now**, which closes the page and stops "Keep buzzing" (see [Snooze and Skip](#snooze-and-skip)). Unanswered, the page closes itself when the event ends. It works like an alarm clock's: if the phone is locked or asleep, the screen turns on and the page shows over the lock screen; if you're using the phone, it opens over whatever is open. The floating widget hides while it's up. If several events start at once, their pages queue up ("NOW · 1 OF 3") and each one shows after you deal with the one before; Back closes the lot. Turn it off with **Fill the screen for starts and reminders**. On Android 14+ it needs "Full screen notifications" allowed for Glance; sideloaded apps usually have it already, and the setup screen shows a Grant button if not.
 
-**Full screen for starts.** When an event starts, a full-screen page shows "▶ NOW", the title, its times, **Open event**, **Delay start** (+2m, +5m, +10m, +15m), **Skip event** and a big green **Start now** (Start now also stops "Keep buzzing"; see [Start now, Delay and Skip](#start-now-delay-and-skip)). It works like an alarm clock's: if the phone is locked or asleep, the screen turns on and the page shows over the lock screen; if you're using the phone, it opens over whatever is open. The floating widget hides while it's up. If several events start at once, their pages queue up ("NOW · 1 OF 3") and each one shows after you deal with the one before; Back closes the lot. Turn it off with **Fill the screen for starts and reminders**. On Android 14+ it needs "Full screen notifications" allowed for Glance; sideloaded apps usually have it already, and the setup screen shows a Grant button if not.
+**Full screen for reminders.** When one of an event's reminders is due, the same page opens in a calmer blue, headed "🔔 IN 10M · 14:00", so it reads as a heads-up rather than a start. It has the same buttons, but the big one is **Dismiss**. If you leave it and the event starts, the start's page replaces it.
 
-**Full screen for reminders.** When one of an event's reminders is due, the same page opens in a calmer blue, headed "🔔 IN 10M · 14:00", so it reads as a heads-up rather than a start. It has the same buttons, but the big one is **Dismiss** (the likeliest thing to do with a heads-up) and **Start now** sits next to **Skip event**. If you leave it and the event starts, the start's page replaces it.
+**Started late.** If the start page is still up 2 minutes or more after the event began, it says "▶ STARTED 12M AGO".
 
-**Started late.** If the start page is answered 2 minutes or more after the event began, it says "▶ STARTED 12M AGO", **Start now** moves the start to now, and **Dismiss** (next to Skip) leaves the times as they are, for when you did start on time.
+**Tap an event** in the open card to get its page: an upcoming one gets the blue page (no bell), the one on now gets the green start page. **Open event** on the page opens it in the calendar app. Earlier events still open straight in the calendar app.
 
-**Tap an event** in the open card to get its page: an upcoming one gets the blue page (no bell), the one on now gets the green start page, so you can move a start you missed to now without opening the calendar. **Open event** on the page opens it in the calendar app. Earlier events still open straight in the calendar app.
+### Snooze and Skip
 
-### Start now, Delay and Skip
-
-These change your calendar, and the change syncs to Google:
-
-- **Start now** on an event that started in the last 2 minutes just closes the page. On one that hasn't started yet, or started longer ago, it moves its start to now (to the minute) and keeps its end, so it gets longer or shorter. No start alert fires for it, since you've started it. Anything it now overlaps is left as it is.
-- **Delay start** moves the start later and keeps the end, so nothing after it shifts and the event gets shorter. It counts from the event's start, or from now if the start has already passed ("I need 5 more minutes"). Delays that would leave nothing of the event aren't offered. The start alert fires again at the new time.
-- **Skip event** deletes it.
-- **Repeating events** only ever change the one occurrence: it's moved or cancelled as an exception, the same as "this event" in Google Calendar. The rest of the series stays as it was. An occurrence of a repeating event created in the last minute or so is refused ("hasn't synced yet") until it has reached Google, because changing it before then can hide the series' other occurrences.
+- **Snooze** closes the page and brings the alert back (buzz, pop-up and page) that many minutes later. The calendar isn't touched: moving an event is yours to do in the calendar. Lengths that would come back after the event ends aren't offered. A snoozed alert doesn't come back if the event has ended, moved or been skipped by then, and a snoozed reminder doesn't come back once the event has started (its start alert has said so).
+- **Start now** and **Dismiss** just close the page.
+- **Skip event** is the one button that changes your calendar, and the change syncs to Google: it deletes the event.
+- **Repeating events** only ever change the one occurrence: it's cancelled as an exception, the same as "this event" in Google Calendar. The rest of the series stays as it was. An occurrence of a repeating event created in the last minute or so is refused ("hasn't synced yet") until it has reached Google, because changing it before then can hide the series' other occurrences.
 - Events where you're a guest rather than the organiser change on the phone, but Google may put them back on the next sync.
-
-**Extend what you were on.** After a delay, the page asks "Extend what you're on by 5m?" with a button for each event that was still on when the delayed one was due, or is on now (so the one that ran over counts), or, if there's none, the one that ended last. A button pushes that event's end back by the same amount, so it runs on until the delayed one starts. **No thanks** closes it.
 
 ### On both devices
 
-Answer an alert on Windows and its page and pop-up close on the phone, and the other way round. Every button on the page (Start now, Dismiss, Delay, Skip, Open event) sends a short message over [ntfy.sh](https://ntfy.sh), a free push service, while each device listens whenever its page is up. Nothing needs pairing: both work out the same private topic from your Google account, and the message is a scrambled code made from the event's title and start time, never the title itself. A message only closes pages that were already up when it was sent, so answering a reminder doesn't close the start page that comes later. Changes to the calendar (a delay or skip on the other device) also close the page once the phone's calendar syncs, even without ntfy.
+Answer an alert on Windows and its page and pop-up close on the phone, and the other way round. Every button on the page (Start now, Dismiss, Snooze, Skip, Open event) sends a short message over [ntfy.sh](https://ntfy.sh), a free push service, while each device listens whenever its page is up. Nothing needs pairing: both work out the same private topic from your Google account, and the message is a scrambled code made from the event's title and start time, never the title itself. A message only closes pages that were already up when it was sent, so answering a reminder doesn't close the start page that comes later. Changes to the calendar (a skip on the other device) also close the page once the phone's calendar syncs, even without ntfy.
 
 **Action history** (in settings) lists every move, extend, skip and revert (and snoozes from before 1.18), including ones that failed and why. **Revert** undoes one: a moved event goes back to its old time, a cancelled occurrence comes back. A deleted one-off event is recreated from a copy taken before it was deleted (title, times, location, description, colour, reminders). It comes back as a new event, so guests and video-call links aren't restored. The history keeps the last 300 actions on the phone (`history.json` in Glance's app storage) and each action is also written to logcat under the `Glance` tag.
 

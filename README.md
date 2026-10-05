@@ -40,7 +40,7 @@
 
 1. Download **`Glance.exe`** from the [latest release](https://github.com/BosTheCoder/glance/releases/latest). It needs the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). If you don't want to install that, use `Glance-standalone.exe` instead (≈70 MB, no runtime needed).
 2. Put it in a folder of its own, for example `C:\Apps\Glance\`.
-3. Run it. Your browser opens for Google sign-in, and after that the widget fills in. Glance asks to read your calendars and to change events (only when you press Start now, Delay or Skip). Google warns that it hasn't verified the app: click **Advanced**, then **Go to …**. To use your own Google project instead, see **[docs/google-setup.md](docs/google-setup.md)**.
+3. Run it. Your browser opens for Google sign-in, and after that the widget fills in. Glance asks to read your calendars and to change events (only when you press Skip). Google warns that it hasn't verified the app: click **Advanced**, then **Go to …**. To use your own Google project instead, see **[docs/google-setup.md](docs/google-setup.md)**.
 
 Want to try it without Google first? Run `Glance.exe --demo`.
 
@@ -79,14 +79,13 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 
 While an alert is showing, the widget stays fully visible. If it was hidden, it comes back. Heads-ups and reminders play the Windows notification sound and give the widget a quick shake. You can choose which alerts do either, or turn them off. Everything is under right-click → **Alerts**, including **Preview alerts** so you can see them.
 
-**The big alert.** When an event starts, or one of its reminders is due, a page also opens in the middle of the screen (40% of its width by default; right-click → **Alerts → Big alert**): black and green for a start, a calmer blue for a reminder. It doesn't take the keyboard, so typing carries on. Its buttons change the event in Google Calendar:
+**The big alert.** When an event starts, or one of its reminders is due, a page also opens in the middle of the screen (40% of its width by default; right-click → **Alerts → Big alert**): black and green for a start, a calmer blue for a reminder. It doesn't take the keyboard, so typing carries on, and it closes itself when the event ends. Its buttons:
 
-- **Start now** (the big button for a start): if the event started in the last 2 minutes, it just closes the page; if it hasn't started yet, or started longer ago, it moves the start to now and keeps the end.
-- **Delay start +2m / +5m / +10m / +15m** moves the start later and keeps the end, so nothing after it shifts. Counted from now if the start has already passed.
-- **Skip event** cancels it (just this occurrence of a repeating event). **Dismiss** (the big button for a reminder) closes the page. **Open event** opens it in Google Calendar.
-- After a change, **Undo** is there for a few seconds. Alerts that were already due at the new time are skipped, so +5m doesn't bring an "in 5 min" heads-up straight back.
+- **Start now** (the big button for a start) and **Dismiss** (the big button for a reminder) close the page.
+- **Snooze 2m / 5m / 10m / 15m** closes it and brings the alert back that much later. Your calendar isn't touched, so moving an event stays yours to do. It doesn't come back if the event has ended, moved or been skipped by then, or, for a reminder, once the event has started.
+- **Skip event** cancels it in Google Calendar (just this occurrence of a repeating event), with **Undo** for a few seconds. It's the only button that changes your calendar. **Open event** opens it in Google Calendar.
 
-After a delay it asks whether to extend what you were on by as much: everything still on when the delayed event was due, or the one that ended last. Answering on Windows closes the same alert on the phone and the other way round (over ntfy.sh, with no titles sent; see [docs/android.md](docs/android.md#on-both-devices)).
+Answering on Windows closes the same alert on the phone and the other way round (over ntfy.sh, with no titles sent; see [docs/android.md](docs/android.md#on-both-devices)).
 
 Click an event that's on now or coming up to get the same page for it. Earlier events still open in Google Calendar. If you signed in before 1.20, Glance could only read your calendar: the first change asks you to sign in again.
 
@@ -105,7 +104,7 @@ To build on Linux or WSL, and for the code layout and release process, see **[do
 
 ## Privacy
 
-Glance asks to read your calendars (`calendar.readonly`) and to change events (`calendar.events`), and talks only to Google. It only changes an event when you press Start now, Delay or Skip on the alert page. Your refresh token stays on your machine, encrypted with Windows DPAPI for your user account.
+Glance asks to read your calendars (`calendar.readonly`) and to change events (`calendar.events`), and talks only to Google. It only changes an event when you press Skip on the alert page. Your refresh token stays on your machine, encrypted with Windows DPAPI for your user account.
 
 ## Licence
 

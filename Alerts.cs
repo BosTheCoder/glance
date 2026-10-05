@@ -47,21 +47,28 @@ public static class Alerts
     }
 }
 
-/// New start times for the alert page's buttons, the same rules as Android's Retime. Only the start moves; the end
-/// stays, so later plans don't shift. Times are whole minutes, as a calendar shows them.
-public static class Retime
+/// The alert page's Snooze, the same rules as Android's: the page comes back a few minutes later, and the calendar
+/// is left alone.
+public static class Snooze
 {
-    public static readonly int[] DelayMinutes = [2, 5, 10, 15];
-    public static DateTime StartNow(DateTime now) => new(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, now.Kind);
-    /// [minutes] after the start, or after now if the start has passed: "I need 5 more minutes".
-    public static DateTime Delayed(Ev e, int minutes, DateTime now) => (e.Start > StartNow(now) ? e.Start : StartNow(now)).AddMinutes(minutes);
-    /// The delays that still leave some of the event.
-    public static int[] Delays(Ev e, DateTime now) => DelayMinutes.Where(m => Delayed(e, m, now) < e.End).ToArray();
-    /// Started a while ago: Start now then moves its start to now instead of just closing the page.
-    public static bool Late(Ev e, DateTime now) => now - e.Start >= TimeSpan.FromMinutes(2);
-    /// An alert that was already due ([due]) when its event was moved at [movedAt] isn't news: delay 5 min and the
-    /// "in 5 min" heads-up is stale, delay 15 and it still comes 5 min before the new start.
-    public static bool Stale(DateTime due, DateTime? movedAt) => movedAt is DateTime m && due <= m;
+    public static readonly int[] Minutes = [2, 5, 10, 15];
+    /// The lengths that come back before the event ends.
+    public static int[] Options(Ev e, DateTime now) => Minutes.Where(m => now.AddMinutes(m) < e.End).ToArray();
+
+    /// Takes the snoozes due by [now] out of [snoozed] (At: when it comes back) and returns them to fire again, with
+    /// the event as it is now. Dropped instead: an event moved, skipped or over, and a reminder whose event has started
+    /// (its start alert has said so).
+    public static List<Alert> Due(List<Alert> snoozed, IEnumerable<Ev> events, DateTime now)
+    {
+        var back = new List<Alert>();
+        foreach (var a in snoozed.Where(a => a.At <= now).ToList())
+        {
+            snoozed.Remove(a);
+            var e = events.FirstOrDefault(x => (a.Event.Id != null ? x.Id == a.Event.Id : x.Title == a.Event.Title) && x.Start == a.Event.Start);
+            if (e != null && now < (a.Kind == AlertKind.Reminder ? e.Start : e.End)) back.Add(a with { Event = e, At = now });
+        }
+        return back;
+    }
 }
 
 /// "I've answered this alert", passed between Windows and the phone over ntfy.sh: the same topic from the Google
@@ -72,17 +79,4 @@ public static class Sync
     public static string Key(string title, DateTime start) => Sha($"{title}|{new DateTimeOffset(start).ToUnixTimeSeconds() / 60}")[..16];
     public static string Topic(string account) => "glance-" + Sha("glance-sync:" + account.ToLowerInvariant())[..20];
     static string Sha(string s) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
-
-    /// What to stretch after delaying [moved] (as it was): everything on when it was due or now (so the one that ran
-    /// over into it counts), or failing that the event that ended last (in the past 6 hours). Extended by the delay, it
-    /// runs on until the delayed event now starts.
-    public static List<Ev> Extendable(IEnumerable<Ev> events, Ev moved, DateTime now)
-    {
-        var timed = events.Where(e => !e.AllDay && !(e.Id != null ? e.Id == moved.Id : e.Title == moved.Title)).ToList();
-        var since = moved.Start < now ? moved.Start : now;
-        var on = timed.Where(e => e.Start <= now && e.End >= since).ToList();
-        if (on.Count > 0) return on;
-        var last = timed.Where(e => e.End <= now && e.End > now.AddHours(-6)).MaxBy(e => e.End);
-        return last == null ? [] : [last];
-    }
 }

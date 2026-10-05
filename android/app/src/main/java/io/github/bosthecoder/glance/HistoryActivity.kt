@@ -44,7 +44,7 @@ class HistoryActivity : Activity() {
         list.removeAllViews()
         list.addView(text("Action history", 26f, Color.WHITE, bold = true).apply { setPadding(0, 0, 0, dp(12)) })
         val all = Actions.history(this).reversed()
-        if (all.isEmpty()) list.addView(text("Nothing yet. Delay, Start now and Skip on the start screen show up here.", 14f, 0x99FFFFFF.toInt()).apply { maxLines = 3 })
+        if (all.isEmpty()) list.addView(text("Nothing yet. Skip on the start screen shows up here.", 14f, 0x99FFFFFF.toInt()).apply { maxLines = 3 })
         for (e in all) list.addView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(10), 0, dp(10))
             addView(LinearLayout(context).apply {
