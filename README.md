@@ -63,6 +63,7 @@ Download **`Glance.apk`** from the same release. It floats over your apps as a s
 | Click **Earlier** next to the pin (shows while hovering) | See what you already had today, in case you missed something. It closes again when you move away |
 | Click the pin | Keep it on top of other windows |
 | <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | Hide or show it from anywhere (change it in the menu). Running `Glance.exe` again also brings it back |
+| Right-click → **Pause** | Hide it and mute every alert for 30 min, 1, 2 or 4 hours (a nap, a meeting, heads-down work). Alerts due meanwhile are dropped, not saved up. It comes back by itself; the shortcut or running `Glance.exe` again ends the pause early. Each device pauses on its own |
 | Right-click | Open settings: calendars, theme, glass, idle opacity, text size, how many events, how far ahead, 12/24h, refresh rate, taskbar, start with Windows, hide/show shortcut |
 
 <p align="center"><img src="docs/images/themes.png" alt="Themes" width="720"></p>

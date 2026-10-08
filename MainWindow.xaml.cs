@@ -371,6 +371,7 @@ public partial class MainWindow : Window
     void Render()
     {
         var now = DateTime.Now;
+        if (s.PausedUntil <= now) { s.PausedUntil = null; s.Save(); Show(); }   // pause is over: back, and alerts on again
         Clock.Text = $"{Time(now)}  ·  {now:ddd d MMM}";
         Pin.Text = s.Pinned ? "" : "";
         NowPanel.Children.Clear(); NextPanel.Children.Clear(); Agenda.Children.Clear(); AllDayPanel.Children.Clear();
@@ -384,8 +385,7 @@ public partial class MainWindow : Window
             // Once per change: pulse the whole widget (so the side strip gets it too), chime, and come back if hidden.
             headsUpFor = coming.At;
             Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(450)) { RepeatBehavior = new RepeatBehavior(2) });
-            if (!IsVisible && s.AlertsReveal) Show();
-            Attention(null);
+            if (!Paused) { if (!IsVisible && s.AlertsReveal) Show(); Attention(null); }
         }
         // Docked, the banners don't fit, so the strip's rim takes the alert's colour instead.
         Color? rim = s.Docked != null && banners.Count > 0 ? (banners[^1].Kind == AlertKind.Reminder ? Blue : Green) : headsUp ? Amber : null;
@@ -822,6 +822,17 @@ public partial class MainWindow : Window
         FadeTo(IdleOpacity());
     }
 
+    bool Paused => s.PausedUntil > DateTime.Now;
+
+    /// Hide and stay silent for [minutes]: no banners, sound, shake or big alert. The shortcut or relaunching ends it early.
+    void Pause(int minutes)
+    {
+        s.PausedUntil = DateTime.Now.AddMinutes(minutes);
+        s.Save();
+        Drop(_ => true);
+        collapseDelay.Stop(); Collapse(); Hide();
+    }
+
     public void ToggleVisible()
     {
         if (IsVisible) { collapseDelay.Stop(); Collapse(); Hide(); }
@@ -831,6 +842,7 @@ public partial class MainWindow : Window
     /// Show and flash to full brightness so it's easy to spot, then settle back to idle.
     public void Reveal()
     {
+        if (s.PausedUntil != null) { s.PausedUntil = null; s.Save(); }   // brought back by hand: the pause is over
         Show();
         alpha = 1;
         Native.Alpha(hwnd, 1);
@@ -873,7 +885,7 @@ public partial class MainWindow : Window
         alertsCheckedTo = now;
         var fresh = Alerts.Due(events, since, now, s.Reminders);
         fresh.AddRange(Snooze.Due(snoozed, events, now));
-        if (fresh.Count == 0) return;
+        if (fresh.Count == 0 || Paused) return;   // paused: these are dropped, not saved for later
         if (s.BigAlerts > 0) foreach (var a in fresh) ShowPage(a.Event, soft: a.Kind == AlertKind.Reminder, bell: true);
 
         banners.AddRange(fresh.Select(a => a with { At = now }));   // At = when shown, for expiry

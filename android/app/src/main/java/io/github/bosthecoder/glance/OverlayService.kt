@@ -4,6 +4,7 @@ import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.app.KeyguardManager
+import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -196,6 +197,7 @@ class OverlayService : Service() {
         private val BUZZ = longArrayOf(0, 500, 200, 500)
         private val ALARM = longArrayOf(0, 800, 400)   // repeats from the start until stopped
         const val STOP_ALARM = "stopAlarm"
+        const val RESUME = "resume"
         /** Snoozed on StartScreen: [a] fires again at [at] (see [Snooze.due]). Main thread. */
         fun snooze(a: Alert, at: Long) { self?.run { snoozed[a] = at; tick() } }
     }
@@ -228,6 +230,8 @@ class OverlayService : Service() {
         else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
     }
     private var bannerUntil = 0L
+    private var pageUp = false      // StartScreen is filling the screen: the widget hides under it
+    private var wasPaused = false
     private var comingAt = -1L      // the change time the heads-up banner last fired for: once per change
     private var expanded = false
     private var showEarlier = false   // today's finished events opened from the card; closes again when it collapses
@@ -311,6 +315,7 @@ class OverlayService : Service() {
     override fun onBind(intent: Intent?) = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP_ALARM) { stopAlarm(); return START_STICKY }   // the pop-up's Stop, or swiping it away
+        if (intent?.action == RESUME) { prefs.pausedUntil = 0; return START_STICKY }   // the ongoing notification's Resume
         // Started again from the app (see MainActivity.onResume): it's in the foreground now, so the location type can be added.
         if (running && ::wm.isInitialized) foreground()
         return START_STICKY
@@ -335,7 +340,8 @@ class OverlayService : Service() {
         reload()
     }
 
-    private fun hideRoot(hidden: Boolean) { if (::root.isInitialized) root.visibility = if (hidden) View.INVISIBLE else View.VISIBLE }
+    private fun hideRoot(hidden: Boolean) { pageUp = hidden; showRoot() }
+    private fun showRoot() { if (::root.isInitialized) root.visibility = if (pageUp || wasPaused) View.INVISIBLE else View.VISIBLE }
 
     override fun onDestroy() {
         running = false; self = null
@@ -360,11 +366,8 @@ class OverlayService : Service() {
         update()
     }
 
-    /** False if Android refused to make this a foreground service; the caller then stops. */
-    private fun foreground(): Boolean {
-        NotificationManagerCompat.from(this).createNotificationChannel(
-            NotificationChannelCompat.Builder("overlay", NotificationManagerCompat.IMPORTANCE_LOW).setName("Floating widget").build())
-        startsChannel(this)
+    /** The "Glance is floating" notification that keeps the service alive; while paused it says until when, with Resume. */
+    private fun ongoing(): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(this, "overlay")
             .setSmallIcon(R.drawable.ic_notif)
@@ -372,7 +375,18 @@ class OverlayService : Service() {
             .setContentText("Tap for settings")
             .setContentIntent(open)
             .setOngoing(true)
-            .build()
+        if (System.currentTimeMillis() < prefs.pausedUntil) n.setContentTitle("Glance is paused until ${hm(prefs.pausedUntil)}")
+            .setContentText("Hidden, no alerts")
+            .addAction(0, "Resume", PendingIntent.getService(this, 1, Intent(this, OverlayService::class.java).setAction(RESUME), PendingIntent.FLAG_IMMUTABLE))
+        return n.build()
+    }
+
+    /** False if Android refused to make this a foreground service; the caller then stops. */
+    private fun foreground(): Boolean {
+        NotificationManagerCompat.from(this).createNotificationChannel(
+            NotificationChannelCompat.Builder("overlay", NotificationManagerCompat.IMPORTANCE_LOW).setName("Floating widget").build())
+        startsChannel(this)
+        val n = ongoing()
         // ServiceCompat drops the types an API level doesn't have (specialUse is 34+, location 29+).
         @Suppress("InlinedApi") val special = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         return try {
@@ -562,14 +576,22 @@ class OverlayService : Service() {
     private fun tick() {
         h.removeCallbacks(tickR)
         val now = System.currentTimeMillis()
-        for (a in tracker.due(events, now) + Snooze.due(snoozed, events, now)) alert(a, now)
+        val paused = now < prefs.pausedUntil
+        if (paused != wasPaused) {
+            wasPaused = paused
+            if (paused) { stopAlarm(); banner = null }
+            showRoot()
+            try { NotificationManagerCompat.from(this).notify(1, ongoing()) } catch (_: SecurityException) {}
+        }
+        // Paused: still run the trackers so these count as fired, then drop them rather than replay them afterwards.
+        for (a in tracker.due(events, now) + Snooze.due(snoozed, events, now)) if (!paused) alert(a, now)
         StartScreen.ended(this, now)
         refreshTrips(now)
         Plan.coming(events, now, prefs.headsUp)?.let {
             if (it.at != comingAt) {
                 comingAt = it.at
                 // A blue reminder already on screen for the same event says it; just pulse and buzz.
-                alert(it, now, show = (banner as? Alert.Reminder)?.ev != it.ev)
+                if (!paused) alert(it, now, show = (banner as? Alert.Reminder)?.ev != it.ev)
             }
         }
         banner?.let {
@@ -581,6 +603,7 @@ class OverlayService : Service() {
         Plan.nextMoment(events, now, prefs.headsUp)?.let { next = minOf(next, it) }
         if (banner is Alert.Starting) next = minOf(next, bannerUntil)
         snoozed.values.minOrNull()?.let { next = minOf(next, it) }
+        if (paused) next = minOf(next, prefs.pausedUntil)
         h.postDelayed(tickR, (next - now).coerceAtLeast(500))
     }
 

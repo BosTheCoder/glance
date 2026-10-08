@@ -97,6 +97,8 @@ class Prefs(ctx: Context) {
     var sound: String get() = sp.getString("sound", null) ?: Settings.System.DEFAULT_NOTIFICATION_URI.toString(); set(v) = sp.edit { putString("sound", v) }
     /** When an event starts, keep buzzing like an alarm for this many seconds: 0 = no alarm, -1 = until stopped. */
     var startAlarm: Int get() = sp.getInt("startAlarm", 0); set(v) = sp.edit { putInt("startAlarm", v) }
+    /** Hidden and silent until this moment (nap, meeting); alerts due meanwhile are dropped. 0 = not paused. */
+    var pausedUntil: Long get() = sp.getLong("pausedUntil", 0); set(v) = sp.edit { putLong("pausedUntil", v) }
     /** When an event starts, fill the screen with it (StartScreen), over the lock screen too. */
     var fullScreen: Boolean get() = sp.getBoolean("fullScreen", true); set(v) = sp.edit { putBoolean("fullScreen", v) }
     /** Travel events: look up public transport times (docs/travel.md), leaving [travelBuffer] min to get ready. */

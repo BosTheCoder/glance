@@ -54,6 +54,7 @@ public class Settings
     public string Shake { get; set; } = "Reminders";   // a little shake to catch your eye: same choices as Sound
     public bool AlertsReveal { get; set; } = true;     // bring the widget back for an alert if it's hidden
     public int BigAlerts { get; set; } = 40;           // starts and reminders also open a page in the middle of the screen, this % of its width; 0 = off
+    public DateTime? PausedUntil { get; set; }         // hidden and silent until then (nap, meeting); alerts due meanwhile are dropped
 
     public static string Path => System.IO.Path.Combine(AppContext.BaseDirectory, "settings.json");
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };

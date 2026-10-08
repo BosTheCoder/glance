@@ -52,6 +52,7 @@ Settings (same names as the Windows app):
 | **Opacity when active** | 50/75/90/100% (default 100%, solid): the glass behind the pill, card and strip while you use it |
 | Idle opacity | 25/50/75/100%: the pill's or card's opacity once it fades |
 | **Fade after** | 3/5/10/30 s (default 5 s): how long untouched before it fades to the idle opacity |
+| **Pause: hide and mute alerts** | 30 min, 1 h, 2 h, 4 h (at the top of settings): the widget hides and no alert buzzes, sounds, pops up or fills the screen until then; alerts due meanwhile are dropped, not saved up. The "Glance is paused until 14:30" notification has **Resume** to end it early, as does the button that replaces these choices. Pausing the phone doesn't pause Windows |
 | Heads-up before a change | 2/5/10 minutes |
 | Vibrate on alerts | On/off (default on): every start, reminder and heads-up buzzes, except in silent mode or Do Not Disturb |
 | **Alert sound** (button) | The sound every alert plays when the ringer is on (default: the phone's notification sound), or None. Vibrate mode buzzes only |

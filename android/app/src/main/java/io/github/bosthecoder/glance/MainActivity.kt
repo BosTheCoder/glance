@@ -156,6 +156,15 @@ class MainActivity : ComponentActivity() {
         list.addView(text("Glance", 28f, Color.WHITE, bold = true))
         list.addView(text("What's on now and next, floating over your apps.", 14f, 0x99FFFFFF.toInt()).apply { maxLines = 3 })
 
+        val pausedUntil = prefs.pausedUntil
+        if (System.currentTimeMillis() < pausedUntil)
+            list.addView(button("Paused until ${hm(pausedUntil)} · Resume", 0xFF1D4D3A.toInt()) { prefs.pausedUntil = 0; build() }
+                .apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) })
+        else choice("Pause: hide and mute alerts", listOf(30, 60, 120, 240), { if (it < 60) "$it min" else "${it / 60} h" }, 0) {
+            prefs.pausedUntil = System.currentTimeMillis() + it * 60_000L
+            finish()   // back to whatever you were doing, now in peace
+        }
+
         header("Permissions")
         permission("Calendar access", Cal.granted(this)) { askPermission.launch(Manifest.permission.READ_CALENDAR) }
         permission("Display over other apps", canOverlay(this)) { openOverlaySettings() }
