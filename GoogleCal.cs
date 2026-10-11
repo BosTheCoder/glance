@@ -12,10 +12,7 @@ namespace Glance;
 
 public class NeedsSignIn : Exception { }
 
-public class NeedsWrite : Exception { }
-
-/// Google Calendar over plain HTTP: installed-app OAuth (loopback + PKCE). Reads calendars; changes only events
-/// (the alert page's Start now, Delay and Skip).
+/// Google Calendar over plain HTTP: installed-app OAuth (loopback + PKCE). Read-only.
 public class GoogleCal
 {
     static string Dir => AppContext.BaseDirectory;
@@ -72,7 +69,7 @@ public class GoogleCal
                 ["client_id"] = id,
                 ["redirect_uri"] = redirect,
                 ["response_type"] = "code",
-                ["scope"] = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events",
+                ["scope"] = "https://www.googleapis.com/auth/calendar.readonly",
                 ["code_challenge"] = B64(SHA256.HashData(Encoding.ASCII.GetBytes(verifier))),
                 ["code_challenge_method"] = "S256",
                 ["state"] = state,
@@ -213,23 +210,6 @@ public class GoogleCal
                 cal.Id, (string?)e["id"]));
         }
         return list;
-    }
-
-    /// Cancels [e]: just this occurrence of a repeating event. [Restore] undoes it.
-    public Task Skip(Ev e) => Send(HttpMethod.Delete, e);
-    public Task Restore(Ev e) => Send(HttpMethod.Patch, e, new JsonObject { ["status"] = "confirmed" });
-
-    async Task Send(HttpMethod method, Ev e, JsonObject? body = null)
-    {
-        using var req = new HttpRequestMessage(method, Api + $"calendars/{Uri.EscapeDataString(e.CalId!)}/events/{Uri.EscapeDataString(e.Id!)}");
-        req.Headers.Authorization = new("Bearer", await Token());
-        if (body != null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-        using var r = await http.SendAsync(req);
-        if (r.IsSuccessStatusCode) return;
-        var text = await r.Content.ReadAsStringAsync();
-        if (r.StatusCode == HttpStatusCode.Forbidden && text.Contains("insufficient", StringComparison.OrdinalIgnoreCase)) throw new NeedsWrite();   // signed in before 1.20: read-only
-        var msg = (string?)JsonNode.Parse(text)?["error"]?["message"];
-        throw new HttpRequestException(msg ?? r.ReasonPhrase, null, r.StatusCode);
     }
 
     /// Minutes-before for "popup" reminders (email reminders aren't ours to show).

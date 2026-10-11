@@ -13,7 +13,7 @@ It reads the calendars your phone already syncs from your Google account, so the
    - **Display over other apps**. This opens a system screen: find Glance and switch it on, then go back.
    - **Notifications** (Android 13+). You get the quiet "Glance is floating" one that keeps it running, and the pop-ups when events start.
    - **Full screen when events start** (Android 14+, only if Android hasn't already allowed it). This opens the "Full screen notifications" page: switch Glance on and go back.
-   - **Change events (skip)**, optional. Needed for Skip on the start screen.
+   - **Change events (revert an old skip)**, optional. Only needed to revert a skip from before 1.24 in Action history.
    - **Location (for travel times)**, optional. Travel times then start from where the phone is (see [Travel times](#travel-times)).
 4. Tick the calendars you want. By default it picks the ones that are visible in your calendar app.
 5. Tap **Start floating widget**.
@@ -58,7 +58,7 @@ Settings (same names as the Windows app):
 | **Alert sound** (button) | The sound every alert plays when the ringer is on (default: the phone's notification sound), or None. Vibrate mode buzzes only |
 | **Keep buzzing when an event starts** | Off (default), 30 s, 1/2/5 min, or Until stopped: buzzes on repeat like an alarm, through vibrate mode but not silent mode or Do Not Disturb. Stop it with the pop-up's **Stop**, by swiping the pop-up away, or by touching the widget |
 | **Fill the screen for starts and reminders** | On (default): a full-screen page when an event starts (black and green) and when one of its reminders is due (calmer blue), over the lock screen too (see [Alerts](#alerts)) |
-| **Action history** (button) | Every skip (and move, from before 1.22), newest first, with **Revert** (see [Snooze and Skip](#snooze-and-skip)) |
+| **Action history** (button) | Every skip (from before 1.24) and move (from before 1.22), newest first, with **Revert** (see [Snooze](#snooze)) |
 | **Pop-ups: Android's settings** (button) | Android's page for the pop-up notification ("Event alerts"): on/off and lock-screen display. Its sound and vibration are off on purpose; Glance plays its own, above |
 | **Travel times** | On/off (default on): public transport times for "Travel" events, see [Travel times](#travel-times) |
 | **Get-ready time** | 0/3/5/10 min (default 5): taken off each departure to give the leave time |
@@ -95,7 +95,7 @@ The alerts show inside the pill, card or side strip, and each kind has its own c
 
 **Pop-up for starts.** A reminder, "*title* in 5m" at the heads-up and "Now: *title*" when it starts show as a notification that pops up over whatever is open. Each replaces the one before, and tapping it opens the event. Turn it off with **Pop-ups: Android's settings**.
 
-**Full screen for starts.** When an event starts, a full-screen page shows "▶ NOW", the title, its times, **Open event**, **Snooze** (2m, 5m, 10m, 15m), **Skip event** and a big green **Start now**, which closes the page and stops "Keep buzzing" (see [Snooze and Skip](#snooze-and-skip)). Unanswered, the page closes itself when the event ends. It works like an alarm clock's: if the phone is locked or asleep, the screen turns on and the page shows over the lock screen; if you're using the phone, it opens over whatever is open. The floating widget hides while it's up. If several events start at once, their pages queue up ("NOW · 1 OF 3") and each one shows after you deal with the one before; Back closes the lot. Turn it off with **Fill the screen for starts and reminders**. On Android 14+ it needs "Full screen notifications" allowed for Glance; sideloaded apps usually have it already, and the setup screen shows a Grant button if not.
+**Full screen for starts.** When an event starts, a full-screen page shows "▶ NOW", the title, its times, **Open event**, **Snooze** (2m, 5m, 10m, 15m) and a big green **Start now**, which closes the page and stops "Keep buzzing" (see [Snooze](#snooze)). Unanswered, the page closes itself when the event ends. It works like an alarm clock's: if the phone is locked or asleep, the screen turns on and the page shows over the lock screen; if you're using the phone, it opens over whatever is open. The floating widget hides while it's up. If several events start at once, their pages queue up ("NOW · 1 OF 3") and each one shows after you deal with the one before; Back closes the lot. Turn it off with **Fill the screen for starts and reminders**. On Android 14+ it needs "Full screen notifications" allowed for Glance; sideloaded apps usually have it already, and the setup screen shows a Grant button if not.
 
 **Full screen for reminders.** When one of an event's reminders is due, the same page opens in a calmer blue, headed "🔔 IN 10M · 14:00", so it reads as a heads-up rather than a start. It has the same buttons, but the big one is **Dismiss**. If you leave it and the event starts, the start's page replaces it.
 
@@ -103,19 +103,16 @@ The alerts show inside the pill, card or side strip, and each kind has its own c
 
 **Tap an event** in the open card to get its page: an upcoming one gets the blue page (no bell), the one on now gets the green start page. **Open event** on the page opens it in the calendar app. Earlier events still open straight in the calendar app.
 
-### Snooze and Skip
+### Snooze
 
-- **Snooze** closes the page and brings the alert back (buzz, pop-up and page) that many minutes later. The calendar isn't touched: moving an event is yours to do in the calendar. Lengths that would come back after the event ends aren't offered. A snoozed alert doesn't come back if the event has ended, moved or been skipped by then, and a snoozed reminder doesn't come back once the event has started (its start alert has said so).
+- **Snooze** closes the page and brings the alert back (buzz, pop-up and page) that many minutes later. The calendar isn't touched: moving an event is yours to do in the calendar. Lengths that would come back after the event ends aren't offered. A snoozed alert doesn't come back if the event has ended, moved or been deleted by then, and a snoozed reminder doesn't come back once the event has started (its start alert has said so).
 - **Start now** and **Dismiss** just close the page.
-- **Skip event** is the one button that changes your calendar, and the change syncs to Google: it deletes the event.
-- **Repeating events** only ever change the one occurrence: it's cancelled as an exception, the same as "this event" in Google Calendar. The rest of the series stays as it was. An occurrence of a repeating event created in the last minute or so is refused ("hasn't synced yet") until it has reached Google, because changing it before then can hide the series' other occurrences.
-- Events where you're a guest rather than the organiser change on the phone, but Google may put them back on the next sync.
 
 ### On both devices
 
-Answer an alert on Windows and its page and pop-up close on the phone, and the other way round. Every button on the page (Start now, Dismiss, Snooze, Skip, Open event) sends a short message over [ntfy.sh](https://ntfy.sh), a free push service, while each device listens whenever its page is up. Nothing needs pairing: both work out the same private topic from your Google account, and the message is a scrambled code made from the event's title and start time, never the title itself. A message only closes pages that were already up when it was sent, so answering a reminder doesn't close the start page that comes later. Changes to the calendar (a skip on the other device) also close the page once the phone's calendar syncs, even without ntfy.
+Answer an alert on Windows and its page and pop-up close on the phone, and the other way round. Every button on the page (Start now, Dismiss, Snooze, Open event) sends a short message over [ntfy.sh](https://ntfy.sh), a free push service, while each device listens whenever its page is up. Nothing needs pairing: both work out the same private topic from your Google account, and the message is a scrambled code made from the event's title and start time, never the title itself. A message only closes pages that were already up when it was sent, so answering a reminder doesn't close the start page that comes later. Changes to the calendar (the event moved or deleted) also close the page once the phone's calendar syncs, even without ntfy.
 
-**Action history** (in settings) lists every move, extend, skip and revert (and snoozes from before 1.18), including ones that failed and why. **Revert** undoes one: a moved event goes back to its old time, a cancelled occurrence comes back. A deleted one-off event is recreated from a copy taken before it was deleted (title, times, location, description, colour, reminders). It comes back as a new event, so guests and video-call links aren't restored. The history keeps the last 300 actions on the phone (`history.json` in Glance's app storage) and each action is also written to logcat under the `Glance` tag.
+No button changes your calendar any more (Skip went in 1.24). **Action history** (in settings) still lists every move, extend, skip and revert from older versions (and snoozes from before 1.18), including ones that failed and why. **Revert** undoes one: a moved event goes back to its old time, a cancelled occurrence comes back. A deleted one-off event is recreated from a copy taken before it was deleted (title, times, location, description, colour, reminders). It comes back as a new event, so guests and video-call links aren't restored. The history keeps the last 300 actions on the phone (`history.json` in Glance's app storage) and each action is also written to logcat under the `Glance` tag.
 
 Each alert fires once. After a restart it only fires alerts that were due in the last 2 minutes, so it doesn't replay the morning's.
 
@@ -179,7 +176,7 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
 | `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/throw-to-dock, alerts |
 | `main/.../StartScreen.kt` | The full-screen page for starts, reminders (blue) and tapped upcoming events: `showWhenLocked` and `turnScreenOn`, opened by the start notification's full-screen intent when locked, or straight from the service when the phone is in use |
-| `main/.../Actions.kt` | Move (start now, delay), Skip and Revert against the calendar provider (exceptions for repeating events), and the action history (`history.json`) |
+| `main/.../Actions.kt` | Revert of old moves and skips against the calendar provider, and the action history (`history.json`) |
 | `main/.../HistoryActivity.kt` | The Action history screen with Revert |
 | `main/.../MainActivity.kt` | Setup screen (edge to edge): permissions, calendar picker, settings, Start/Stop |
 | `main/.../Update.kt` | Check for updates: the GitHub releases API, the SHA-256 check and the `PackageInstaller` session |

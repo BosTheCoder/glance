@@ -31,7 +31,7 @@ just demo                           # WSL: same, but starts a --demo copy from %
 | `MainWindow.xaml` | The whole UI tree: header, now card, next, agenda, and the resize grip |
 | `MainWindow.xaml.cs` | Behaviour: refresh loop, rendering, hover expand/collapse, fade, resize, live settings reload |
 | `MainWindow.Menu.cs` | The right-click menu, rebuilt on every open from `Settings` |
-| `MainWindow.Page.cs` | The big alert page in the middle of the screen: Start now, Snooze, Skip (the one change sent to Google) with Undo, and answers passed to and from the phone over ntfy.sh |
+| `MainWindow.Page.cs` | The big alert page in the middle of the screen: Start now, Snooze, Open event, and answers passed to and from the phone over ntfy.sh |
 | `Settings.cs` | `settings.json` model, themes and colour resolution |
 | `GoogleCal.cs` | OAuth for installed apps (loopback + PKCE), token refresh and storage, calendar and event fetch, and moving or cancelling an event |
 | `Native.cs` | P/Invoke for the acrylic backdrop, rounded corners, whole-window alpha, tool-window style and per-monitor work area |

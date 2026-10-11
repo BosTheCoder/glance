@@ -1,6 +1,5 @@
 package io.github.bosthecoder.glance
 
-import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -11,18 +10,15 @@ import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.IntentCompat
-import org.json.JSONObject
-import kotlin.concurrent.thread
 
 /**
  * Full-screen "Now: title" when an event starts, like an alarm clock: it turns the screen on and shows over the lock
  * screen (showWhenLocked / turnScreenOn in the manifest). Opened by the start notification's full-screen intent, or
  * straight from the service when the phone is in use. Start now closes it and stops a "keep buzzing" alarm.
  * A reminder, or an upcoming event tapped in the widget, opens the same page in a softer blue ("soft").
- * Snooze closes it and alerts again a few minutes later; only Skip changes the calendar. A page closes itself once
+ * Snooze closes it and alerts again a few minutes later; nothing here changes the calendar. A page closes itself once
  * its event is over. Several at once queue up and show one after another; each is answered in turn.
  */
 class StartScreen : Activity() {
@@ -46,13 +42,10 @@ class StartScreen : Activity() {
         /** Keys this phone sent, so its own message coming back from ntfy doesn't close the next page. */
         private val sent = HashSet<String>()
 
-        /** The page being skipped here: its own change mustn't close it before it says how it went. */
-        private var acting: Intent? = null
-
         /** Takes the pages matching [gone] off the queue (and their pop-ups), then shows what's left. */
         private fun drop(ctx: Context, gone: (Intent) -> Boolean) {
             val first = queue.firstOrNull()
-            val out = queue.filter { it !== acting && gone(it) }.toSet()
+            val out = queue.filter(gone).toSet()
             if (out.isEmpty()) return
             queue.removeAll(out)
             out.forEach { NotificationManagerCompat.from(ctx).cancel("start", it.id().toInt()) }
@@ -130,7 +123,6 @@ class StartScreen : Activity() {
                     }) }
                 })
             }
-            addView(button("Skip event", 0xFF3A1F1F.toInt()) { act { Actions.wontDo(this@StartScreen, ev) } })
             // The big button: Dismiss for a reminder or a look ahead, Start now for a start. Both just close the page.
             addView(if (soft) button("Dismiss", 0xFF2F4A86.toInt(), height = 72) { dismiss() }
                 else button("Start now", 0xFF1F8F5F.toInt(), height = 72) { dismiss() })
@@ -147,31 +139,9 @@ class StartScreen : Activity() {
 
     private fun answered(key: String) { sent += key; Relay.send(applicationContext, key) }
 
-    private var pending: (() -> JSONObject)? = null
-
-    /** Runs a calendar change off the main thread, says how it went, then closes. Asks for write access first if needed. */
-    private fun act(change: () -> JSONObject) {
-        if (!canWrite(this)) { pending = change; requestPermissions(arrayOf(Manifest.permission.WRITE_CALENDAR), 1); return }
-        acting = queue.firstOrNull()
-        thread {
-            val r = change()
-            runOnUiThread {
-                if (!r.has("error")) answered(Sync.key(r.getString("title"), r.getLong("begin")))
-                Toast.makeText(this, r.optString("error").takeIf { it.isNotEmpty() }?.let { "Couldn't change it: ${it.substringAfter(": ")}" } ?: "Skipped", Toast.LENGTH_LONG).show()
-                dismiss(send = false)
-            }
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        val p = pending; pending = null
-        if (p != null && canWrite(this)) act(p)
-    }
-
-    /** Done with the one on screen: on to the next queued start, or close. [send]: tell Windows it's answered. */
-    private fun dismiss(send: Boolean = true) {
-        acting = null
-        if (send) queue.firstOrNull()?.let { answered(it.key()) }
+    /** Done with the one on screen: tell Windows it's answered, then on to the next queued start, or close. */
+    private fun dismiss() {
+        queue.firstOrNull()?.let { answered(it.key()) }
         // Only a running widget can be buzzing; starting the service here would switch the widget on.
         if (OverlayService.running) startService(Intent(this, OverlayService::class.java).setAction(OverlayService.STOP_ALARM))
         queue.removeFirstOrNull()?.let { NotificationManagerCompat.from(this).cancel("start", it.getLongExtra("id", 0).toInt()) }

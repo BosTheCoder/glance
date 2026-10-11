@@ -153,7 +153,7 @@ public partial class MainWindow : Window
             // Only in the settled, focused view: a click that lands as the widget is still expanding under the pointer isn't aimed.
             if (s.Docked == null && hovering && downAt - hoveredSince > TimeSpan.FromMilliseconds(500) && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && LinkAt(down.OriginalSource) is string link)
             {
-                // A click (not a drag) on an event on now or coming up opens its page (start it now, delay, skip, open);
+                // A click (not a drag) on an event on now or coming up opens its page (start it now, snooze, open);
                 // on an earlier event or a travel time it opens the link.
                 if (EventAt(down.OriginalSource) is { AllDay: false } ev && ev.End > DateTime.Now) ShowPage(ev, soft: ev.Start > DateTime.Now, bell: false);
                 else Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });

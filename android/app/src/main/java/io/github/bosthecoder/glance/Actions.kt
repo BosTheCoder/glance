@@ -17,11 +17,11 @@ fun canWrite(ctx: Context) =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
 /**
- * Won't do (Skip), written to the calendar provider (which syncs it to Google) and logged to history.json so it can
- * be reverted. A repeating event is never changed as a whole: its occurrence gets a cancelled exception, and
- * reverting puts that exception back to how the occurrence was. A one-off event is deleted after keeping a copy of
- * its fields and reminders so revert can insert it again (as a new event: guests and conferencing links don't come
- * back). Moves logged before 1.22 (Delay and Start now, since replaced by Snooze) can still be reverted.
+ * Glance no longer changes the calendar; this only reverts what older versions logged to history.json. A skipped
+ * occurrence of a repeating event was a cancelled exception, and reverting puts that exception back to how the
+ * occurrence was. A skipped one-off event was deleted after keeping a copy of its fields and reminders, so revert
+ * inserts it again (as a new event: guests and conferencing links don't come back). Moves logged before 1.22 (Delay
+ * and Start now) can still be reverted too.
  */
 object Actions {
     private const val TAG = "Glance"
@@ -43,39 +43,6 @@ object Actions {
         save(ctx, history(ctx) + entry)
         Log.i(TAG, "action: $entry")
         return entry
-    }
-
-    private fun series(ctx: Context, eventId: Long): JSONObject? = ctx.contentResolver.query(
-        ContentUris.withAppendedId(Events.CONTENT_URI, eventId),
-        arrayOf(Events.RRULE, Events.RDATE, Events.ORIGINAL_ID, Events.STATUS, Events._SYNC_ID), null, null, null,
-    )?.use { c ->
-        if (!c.moveToFirst()) null
-        else JSONObject().put("recurring", !c.getString(0).isNullOrEmpty() || !c.getString(1).isNullOrEmpty())
-            .put("synced", !c.getString(4).isNullOrEmpty())
-            .put("exception", !c.isNull(2))   // already a moved/changed occurrence of a repeating event
-            .put("status", if (c.isNull(3)) JSONObject.NULL else c.getInt(3))
-    }
-
-    private fun base(kind: String, e: Ev) = JSONObject().put("kind", kind).put("title", e.title)
-        .put("begin", e.begin).put("end", e.end).put("eventId", e.eventId)
-
-    /** Cancels this occurrence of [e]: a cancelled exception for a repeating event, otherwise deletes it (keeping a copy). */
-    fun wontDo(ctx: Context, e: Ev): JSONObject {
-        val entry = base("wontdo", e)
-        return log(ctx, runCatching {
-            val s = series(ctx, e.eventId) ?: error("event ${e.eventId} not found")
-            if (s.getBoolean("recurring")) {
-                val id = exception(ctx, e, ContentValues().apply { put(Events.STATUS, Events.STATUS_CANCELED) })
-                entry.put("how", "exception").put("target", id).put("oldStatus", s.get("status"))
-            } else if (s.getBoolean("exception")) {   // cancel the changed occurrence rather than delete it
-                update(ctx, e.eventId, ContentValues().apply { put(Events.STATUS, Events.STATUS_CANCELED) })
-                entry.put("how", "exception").put("target", e.eventId).put("oldStatus", s.get("status"))
-            } else {
-                entry.put("how", "deleted").put("copy", copy(ctx, e.eventId))
-                if (ctx.contentResolver.delete(ContentUris.withAppendedId(Events.CONTENT_URI, e.eventId), null, null) != 1)
-                    error("delete changed nothing")
-            }
-        }.fold({ entry }, { entry.put("error", it.toString()) }))
     }
 
     /** Undoes [entry] (by its "at"), marks it reverted and logs the revert. */
@@ -104,29 +71,6 @@ object Actions {
     private fun update(ctx: Context, id: Long, v: ContentValues) {
         if (ctx.contentResolver.update(ContentUris.withAppendedId(Events.CONTENT_URI, id), v, null, null) != 1)
             error("update of event $id changed nothing")
-    }
-
-    /** An exception for the occurrence of [e] that starts at e.begin; [v] says what's different. Returns its event id. */
-    private fun exception(ctx: Context, e: Ev, v: ContentValues): Long {
-        // Without a sync id the provider stops expanding the rest of the series once it has an exception (seen on a
-        // local calendar), so wait for the event to reach Google rather than hide its other occurrences.
-        check(series(ctx, e.eventId)?.optBoolean("synced") == true) { "this repeating event hasn't synced yet; try again in a minute" }
-        v.put(Events.ORIGINAL_INSTANCE_TIME, e.begin)
-        val uri = ctx.contentResolver.insert(ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, e.eventId), v)
-            ?: error("exception insert returned nothing")
-        return ContentUris.parseId(uri)
-    }
-
-    private fun copy(ctx: Context, id: Long): JSONObject {
-        val o = JSONObject()
-        ctx.contentResolver.query(ContentUris.withAppendedId(Events.CONTENT_URI, id), COPY, null, null, null)?.use { c ->
-            if (!c.moveToFirst()) error("event $id not found")
-            COPY.forEachIndexed { i, col -> if (!c.isNull(i)) o.put(col, c.getString(i)) }
-        }
-        val rem = JSONArray()
-        ctx.contentResolver.query(Reminders.CONTENT_URI, arrayOf(Reminders.MINUTES, Reminders.METHOD), "${Reminders.EVENT_ID} = ?", arrayOf("$id"), null)
-            ?.use { c -> while (c.moveToNext()) rem.put(JSONObject().put("m", c.getInt(0)).put("method", c.getInt(1))) }
-        return o.put("reminders", rem)
     }
 
     private fun restore(ctx: Context, o: JSONObject): Long {
