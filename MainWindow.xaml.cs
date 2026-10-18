@@ -377,6 +377,7 @@ public partial class MainWindow : Window
         NowPanel.Children.Clear(); NextPanel.Children.Clear(); Agenda.Children.Clear(); AllDayPanel.Children.Clear();
 
         CheckAlerts(now);
+        RefreshPages(now);
         var change = Alerts.NextChange(events, now);
         coming = Alerts.Coming(events, now, s.HeadsUpMinutes);
         headsUp = coming != null;

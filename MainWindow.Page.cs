@@ -91,6 +91,15 @@ public partial class MainWindow
         Drop(p => Gone(p.Ev));
     }
 
+    /// Every tick: a reminder's page goes once its event starts (its start page takes over), any page once its event
+    /// is over, and what's left is redrawn so "IN 5M" counts down.
+    void RefreshPages(DateTime now)
+    {
+        if (pageWindow == null) return;
+        pages.RemoveAll(p => p.Ev.End <= now || p.Soft && p.Bell && p.Ev.Start <= now);
+        DrawPage();
+    }
+
     void Drop(Func<Page, bool> gone)
     {
         var first = pages.FirstOrDefault();
