@@ -6,9 +6,9 @@ using Xunit;
 public class AlarmTests
 {
     [Theory]
-    [InlineData("https://bos-desktop.fish-grouper.ts.net:18787/api/alarms/1", true)]
+    [InlineData("https://box.tail1234.ts.net:18787/api/alarms/1", true)]
     [InlineData("  https://x.ts.net/a\n", true)]
-    [InlineData("http://bos-desktop.fish-grouper.ts.net/a", false)]
+    [InlineData("http://box.tail1234.ts.net/a", false)]
     [InlineData("https://ts.net.evil.com/a", false)]
     [InlineData("https://box.ts.net.evil.com/a", false)]
     [InlineData("https://evil.com/x.ts.net", false)]
@@ -39,5 +39,5 @@ public class AlarmTests
 
     [Fact]   // the same value is asserted in Android's AlarmTest, and by the concierge app that posts to it
     public void Alarm_topic_is_the_contract() =>
-        Assert.Equal("glance-44ecad7f70439178d8b1", Sync.AlarmTopic("NyakundiHotmail@gmail.com"));
+        Assert.Equal("glance-b961b409ea7e67871153", Sync.AlarmTopic("Someone@Example.com"));
 }

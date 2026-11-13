@@ -13,6 +13,7 @@ It reads the calendars your phone already syncs from your Google account, so the
    - **Display over other apps**. This opens a system screen: find Glance and switch it on, then go back.
    - **Notifications** (Android 13+). You get the quiet "Glance is floating" one that keeps it running, and the pop-ups when events start.
    - **Full screen when events start** (Android 14+, only if Android hasn't already allowed it). This opens the "Full screen notifications" page: switch Glance on and go back.
+   - **Alarms through Do Not Disturb**, optional. Opens Android's "Do Not Disturb access" list: switch Glance on and go back. Lets urgent and critical [alarms from other apps](#alarms-from-other-apps) through.
    - **Change events (revert an old skip)**, optional. Only needed to revert a skip from before 1.24 in Action history.
    - **Location (for travel times)**, optional. Travel times then start from where the phone is (see [Travel times](#travel-times)).
 4. Tick the calendars you want. By default it picks the ones that are visible in your calendar app.
@@ -116,6 +117,27 @@ No button changes your calendar any more (Skip went in 1.24). **Action history**
 
 Each alert fires once. After a restart it only fires alerts that were due in the last 2 minutes, so it doesn't replay the morning's.
 
+## Alarms from other apps
+
+Any of your apps can raise an alarm on the phone and on Windows through Glance. Glance listens all the time the widget runs (and on Windows, all the time Glance runs), not only while a page is up.
+
+**The contract.** To raise an alarm, an app:
+
+1. Serves the alarm as JSON on your tailnet, over https on a `*.ts.net` host:
+   `{"id": "…", "level": "needs" | "urgent" | "critical", "title": "…", "body": "…", "open": "https://…"}`
+2. Posts that URL, and nothing else, as the message body to `https://ntfy.sh/<topic>`, where
+   `<topic> = "glance-" + sha256_hex("glance-alarm:" + account.lower())[:20]` (the first 20 hex characters), for each Google account whose calendars Glance shows. For `someone@example.com` that's `glance-b961b409ea7e67871153`.
+
+Glance ignores (and logs) a URL that isn't https on a host ending `.ts.net`. If the fetch fails or isn't a 200 with a well-formed alarm, nothing happens. Anyone can post to an ntfy topic, but only your tailnet can serve the alarm, so a fake one can't fire. Nothing but the URL goes through ntfy. Each `id` fires once: Glance keeps the last 100 ids it has fired (and re-reads the last 10 minutes after a dropped connection, so none are missed).
+
+| Level | Phone | Windows |
+| --- | --- | --- |
+| `needs` | A normal notification; tap it to open `open` in the browser | Nothing |
+| `urgent` | A notification on its own channel that gets through Do Not Disturb (with the Grant above) and keeps sounding and buzzing until you tap or swipe it | The alert page in amber, with **Open** and **Dismiss** |
+| `critical` | A red full-screen page, over the lock screen with the screen on: the title, the body, a big **Open** (opens `open` and closes the page) and **Dismiss**. It sounds and buzzes like an alarm clock (alarm volume, through silent mode and Do Not Disturb) until you press one. Back does nothing | The alert page in red, with **Open** and **Dismiss** |
+
+**Pause** mutes `needs` and `urgent`, never `critical`. **Open** or **Dismiss** on one device closes the page on the other: Glance sends `alarm:<id>` on the account's sync topic, the same relay as [On both devices](#on-both-devices).
+
 ## Travel times
 
 Any timed event whose title starts with "Travel" gets the next public transport options from TfL. The rules for where a trip starts and ends are the same as on Windows, in [docs/travel.md](travel.md).
@@ -176,17 +198,19 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
 | `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/throw-to-dock, alerts |
 | `main/.../StartScreen.kt` | The full-screen page for starts, reminders (blue) and tapped upcoming events: `showWhenLocked` and `turnScreenOn`, opened by the start notification's full-screen intent when locked, or straight from the service when the phone is in use |
+| `main/.../Alarm.kt` | Alarms from other apps: the contract's checks (`Alarm`: tailnet host, parse, seen ids), the always-on listener and notifications (`Alarms`), and the red page (`AlarmScreen`) |
 | `main/.../Actions.kt` | Revert of old moves and skips against the calendar provider, and the action history (`history.json`) |
 | `main/.../HistoryActivity.kt` | The Action history screen with Revert |
 | `main/.../MainActivity.kt` | Setup screen (edge to edge): permissions, calendar picker, settings, Start/Stop |
 | `main/.../Update.kt` | Check for updates: the GitHub releases API, the SHA-256 check and the `PackageInstaller` session |
 | `main/.../BootReceiver.kt` | Restarts the service after a reboot if "start on boot" is on |
 | `main/res/` | Bell and notification vectors, adaptive launcher icon (foreground cut from `assets/source.png`, background `#0B1030`) |
+| `test/.../AlarmTest.kt` | The tailnet-only check, alarm parsing, fire-once ids and the alarm topic |
 | `test/.../AlertsTest.kt` | JVM tests for now/next, Up next, the side strip's rows, the dock decision, the heads-up window and banner, alert de-duplication and the release-tag compare |
 
 ## Notes
 
-- **Battery.** It runs as a foreground service so Android doesn't kill it. It wakes every 30 seconds, and at the exact moment something changes, and reads a local database. There's no network use.
+- **Battery.** It runs as a foreground service so Android doesn't kill it. It wakes every 30 seconds, and at the exact moment something changes, and reads a local database. The only network it keeps open is one ntfy.sh connection for alarms from other apps (a keepalive every 45 s).
 - **Why an overlay and not a bubble.** Android's Bubbles API only floats *conversation* notifications (a `MessagingStyle` notification tied to a sharing shortcut), so it can't host a calendar. A `TYPE_APPLICATION_OVERLAY` window with the "Display over other apps" permission is still the supported way to keep your own view on screen over other apps. The window never takes keyboard focus and passes touches outside itself straight to the app underneath, so Android 12's block on untrusted touches doesn't affect it. On Android 11+ it's built from a window context, as the platform docs ask for windows added from a service.
 - **Gesture navigation.** The pill stays between the status bar and the navigation bar. The side strip is widened by the back-gesture zone on its edge (read from the system's gesture insets on Android 11+) and its text starts past it, so dragging or tapping the text moves or opens the strip instead of going back.
 - **Opening events** uses the Calendar Provider's documented view intent (`ACTION_VIEW` on the event's `Events` URI, with the occurrence's begin and end times so a repeating event opens on the right day). Starting an activity from the floating window is allowed because Glance holds "Display over other apps", one of Android's background-activity-start exemptions. If no calendar app can open it, you get a short message instead.

@@ -9,9 +9,9 @@ import org.junit.Test
 class AlarmTest {
     @Test fun onlyTailnetHttpsIsTrusted() {
         for ((url, ok) in listOf(
-            "https://bos-desktop.fish-grouper.ts.net:18787/api/alarms/1" to true,
+            "https://box.tail1234.ts.net:18787/api/alarms/1" to true,
             "  https://x.ts.net/a\n" to true,
-            "http://bos-desktop.fish-grouper.ts.net/a" to false,
+            "http://box.tail1234.ts.net/a" to false,
             "https://ts.net.evil.com/a" to false,
             "https://box.ts.net.evil.com/a" to false,
             "https://evil.com/x.ts.net" to false,
@@ -36,5 +36,5 @@ class AlarmTest {
         assertEquals(listOf("b", "c", "d"), seen)
     }
 
-    @Test fun alarmTopicIsTheContract() = assertEquals("glance-44ecad7f70439178d8b1", Sync.alarmTopic("NyakundiHotmail@gmail.com"))
+    @Test fun alarmTopicIsTheContract() = assertEquals("glance-b961b409ea7e67871153", Sync.alarmTopic("Someone@Example.com"))
 }
