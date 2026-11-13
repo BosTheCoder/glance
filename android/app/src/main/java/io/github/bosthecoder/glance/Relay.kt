@@ -14,11 +14,12 @@ import kotlin.concurrent.thread
 object Relay {
     private const val HOST = "https://ntfy.sh/"
 
-    /** Topics for the accounts of the calendars Glance shows. Provider query: not on the main thread. */
-    private fun topics(ctx: Context): List<String> {
+    /** The Google accounts of the calendars Glance shows. Provider query: not on the main thread. */
+    fun accounts(ctx: Context): List<String> {
         val chosen = Prefs(ctx).chosenCalendars(ctx)
-        return Cal.calendars(ctx).filter { it.id in chosen && "@" in it.account }.map { Sync.topic(it.account) }.distinct()
+        return Cal.calendars(ctx).filter { it.id in chosen && "@" in it.account }.map { it.account.lowercase() }.distinct()
     }
+    private fun topics(ctx: Context) = accounts(ctx).map(Sync::topic)
 
     fun send(ctx: Context, key: String) = thread {
         for (t in topics(ctx)) runCatching {
@@ -34,19 +35,22 @@ object Relay {
      * Calls [onKey] (key, when it was sent in epoch ms) on a background thread for each key sent in the last 10 minutes
      * and from now on (ntfy keeps them), reconnecting after a drop, until the returned function is called.
      */
-    fun listen(ctx: Context, onKey: (String, Long) -> Unit): () -> Unit {
+    fun listen(ctx: Context, onKey: (String, Long) -> Unit) = listen({ topics(ctx) }) { _, k, at -> onKey(k, at) }
+
+    /** The same on any [topics] (asked again on each reconnect); [onMessage] also gets the topic each came on. */
+    fun listen(topics: () -> List<String>, onMessage: (topic: String, message: String, at: Long) -> Unit): () -> Unit {
         val stopped = java.util.concurrent.atomic.AtomicBoolean(false)
         val conn = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>()
         thread {
             while (!stopped.get()) {
                 runCatching {
-                    val ts = topics(ctx).takeIf { it.isNotEmpty() } ?: return@thread
+                    val ts = topics().ifEmpty { Thread.sleep(55_000); return@runCatching }   // no calendars yet (just booted): look again
                     val c = (URL("$HOST${ts.joinToString(",")}/json?since=10m").openConnection() as HttpURLConnection)
                         .apply { connectTimeout = 10_000; readTimeout = 90_000 }   // ntfy sends a keepalive every 45 s
                     conn.set(c)
                     c.inputStream.bufferedReader().forEachLine { line ->
                         val m = runCatching { JSONObject(line) }.getOrNull()
-                        if (m?.optString("event") == "message") onKey(m.optString("message"), m.optLong("time") * 1000)
+                        if (m?.optString("event") == "message") onMessage(m.optString("topic"), m.optString("message"), m.optLong("time") * 1000)
                     }
                 }
                 if (!stopped.get()) Thread.sleep(5_000)

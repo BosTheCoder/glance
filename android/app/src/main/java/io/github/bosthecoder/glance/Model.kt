@@ -134,6 +134,8 @@ object Snooze {
 object Sync {
     fun key(title: String, begin: Long) = sha("$title|${begin / MIN}").take(16)
     fun topic(account: String) = "glance-" + sha("glance-sync:${account.lowercase()}").take(20)
+    /** Where other apps post alarms for this account (see [Alarm]). */
+    fun alarmTopic(account: String) = "glance-" + sha("glance-alarm:${account.lowercase()}").take(20)
     private fun sha(s: String) = java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 }
 

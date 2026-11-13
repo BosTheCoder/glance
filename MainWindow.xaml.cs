@@ -85,6 +85,7 @@ public partial class MainWindow : Window
             FadeTo(IdleOpacity());
             if (!demo && !g.SignedIn && g.ConfigError == null && s.Calendars == null) await SignIn();   // first run
             else await Refresh();
+            _ = ListenAlarms();
         };
 
         // Google has no push to a desktop app, so poll: cheap (a few requests per minute) and keeps edits near-live.
@@ -830,7 +831,7 @@ public partial class MainWindow : Window
     {
         s.PausedUntil = DateTime.Now.AddMinutes(minutes);
         s.Save();
-        Drop(_ => true);
+        Drop(p => p.Alarm?.Level != "critical");   // pause never mutes a critical alarm
         collapseDelay.Stop(); Collapse(); Hide();
     }
 

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Media;
 using System.Net.Http;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -17,10 +18,12 @@ namespace Glance;
 /// Answering one tells the phone over ntfy.sh (see Sync), and an answer from the phone closes it here.
 public partial class MainWindow
 {
-    record Page(Ev Ev, bool Soft, bool Bell, DateTime Queued);
+    /// [Alarm]: a page another app raised (see ListenAlarms), not an event's.
+    record Page(Ev Ev, bool Soft, bool Bell, DateTime Queued, Alarm? Alarm = null);
     readonly List<Page> pages = new();
     Window? pageWindow;
     static string K(Ev e) => Sync.Key(e.Title, e.Start);
+    static string K(Page p) => p.Alarm is { } a ? "alarm:" + a.Id : K(p.Ev);
     readonly List<Alert> snoozed = new();   // At: when it comes back (see Snooze.Due)
 
     /// [soft]: a reminder or a click, not a start. A start replaces a reminder for the same event still waiting.
@@ -35,7 +38,7 @@ public partial class MainWindow
     /// On to the next page, telling the phone this one's answered.
     void NextPage()
     {
-        if (pages.Count > 0) { Answered(K(pages[0].Ev)); pages.RemoveAt(0); }
+        if (pages.Count > 0) { Answered(K(pages[0])); pages.RemoveAt(0); }
         DrawPage();
     }
 
@@ -79,7 +82,7 @@ public partial class MainWindow
     {
         if (sent.Contains(key)) return;
         banners.RemoveAll(a => K(a.Event) == key && a.At <= at);
-        Drop(p => K(p.Ev) == key && p.Queued <= at);
+        Drop(p => K(p) == key && p.Queued <= at);
         Render();
     }
 
@@ -110,7 +113,7 @@ public partial class MainWindow
     void DrawPage()
     {
         if (pages.Count == 0) { pageWindow?.Close(); pageWindow = null; return; }
-        var (e, soft, bell, _) = pages[0];
+        var (e, soft, bell, _, alarm) = pages[0];
         if (pageWindow == null)
         {
             var wa = Native.WorkArea(this, hwnd);
@@ -137,10 +140,10 @@ public partial class MainWindow
         pageWindow.Content = new Border
         {
             CornerRadius = new(18), Padding = new(0),
-            Background = new SolidColorBrush(soft ? Color.FromRgb(0x17, 0x21, 0x3A) : Color.FromRgb(0x0E, 0x0E, 0x10)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x90, (soft ? Blue : Green).R, (soft ? Blue : Green).G, (soft ? Blue : Green).B)),
+            Background = new SolidColorBrush(alarm?.Level == "critical" ? Color.FromRgb(0x7A, 0x0E, 0x14) : soft ? Color.FromRgb(0x17, 0x21, 0x3A) : Color.FromRgb(0x0E, 0x0E, 0x10)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x90, Accent(soft, alarm).R, Accent(soft, alarm).G, Accent(soft, alarm).B)),
             BorderThickness = new(1.5),
-            Child = new Viewbox { Stretch = Stretch.Uniform, Child = PageBody(e, soft, bell) },
+            Child = new Viewbox { Stretch = Stretch.Uniform, Child = alarm != null ? AlarmBody(alarm) : PageBody(e, soft, bell) },
         };
     }
 
@@ -175,6 +178,78 @@ public partial class MainWindow
         p.Children.Add(soft ? PageButton("Dismiss", Color.FromRgb(0x2F, 0x4A, 0x86), 58, NextPage) : PageButton("Start now", Color.FromRgb(0x1F, 0x8F, 0x5F), 58, NextPage));
         return p;
     }
+
+    static Color Accent(bool soft, Alarm? a) => a == null ? (soft ? Blue : Green) : a.Level == "critical" ? Color.FromRgb(0xFF, 0x8A, 0x8A) : Amber;
+
+    /// An alarm from another app: critical on red, urgent on black and amber. Open opens its link; both close the page.
+    StackPanel AlarmBody(Alarm a)
+    {
+        var p = new StackPanel { Width = 560, Margin = new(30, 28, 30, 28) };
+        var head = (a.Level == "critical" ? "⏰  ALARM" : "⚠  URGENT") + (pages.Count > 1 ? $"  ·  1 OF {pages.Count}" : "");
+        p.Children.Add(new TextBlock { Text = head, FontSize = 15, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Accent(false, a)) });
+        p.Children.Add(new TextBlock { Text = a.Title, FontSize = 36, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap, MaxHeight = 100, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new(0, 8, 0, 4) });
+        if (a.Body != "") p.Children.Add(new TextBlock { Text = a.Body, FontSize = 18, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, MaxHeight = 160, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new(0, 0, 0, 18) });
+        if (a.Open != "") p.Children.Add(PageButton("Open", a.Level == "critical" ? Color.FromRgb(0xD0, 0x2B, 0x35) : Color.FromRgb(0x9A, 0x63, 0x10), 58, () =>
+        {
+            Process.Start(new ProcessStartInfo(a.Open) { UseShellExecute = true });
+            NextPage();
+        }));
+        p.Children.Add(PageButton("Dismiss", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF), 46, NextPage));
+        return p;
+    }
+
+    // ---------- alarms from other apps ----------
+
+    static readonly HttpClient fetcher = new() { Timeout = TimeSpan.FromSeconds(10) };
+    static string SeenPath => Path.Combine(AppContext.BaseDirectory, "alarms-seen.txt");
+
+    /// Always, while Glance runs: alarm URLs posted to the account's alarm topic. Each is fetched from the tailnet and,
+    /// if it's urgent or critical, opens the page. Reconnects after a drop; since=10m plus the seen ids means nothing in
+    /// the last few minutes is lost and nothing fires twice.
+    async Task ListenAlarms()
+    {
+        while (true)
+        {
+            if (!demo && g.Account is string acct)
+                try
+                {
+                    using var r = await relay.GetAsync($"https://ntfy.sh/{Sync.AlarmTopic(acct)}/json?since=10m", HttpCompletionOption.ResponseHeadersRead);
+                    using var reader = new StreamReader(await r.Content.ReadAsStreamAsync());
+                    using var quiet = new CancellationTokenSource();   // ntfy sends a keepalive every 45 s; silence for 90 means the line died (sleep)
+                    while (true)
+                    {
+                        quiet.CancelAfter(90_000);   // pushed back by every line
+                        if (await reader.ReadLineAsync(quiet.Token) is not string line) break;
+                        if (JsonNode.Parse(line) is { } m && (string?)m["event"] == "message") await Arrived((string)m["message"]!);
+                    }
+                }
+                catch { }
+            await Task.Delay(demo || g.Account == null ? 60_000 : 5000);
+        }
+    }
+
+    async Task Arrived(string url)
+    {
+        if (!Alarm.Trusted(url)) { Log($"alarm ignored, not a tailnet https URL: {url}"); return; }
+        Alarm? a;
+        try
+        {
+            using var r = await fetcher.GetAsync(url.Trim());
+            a = r.StatusCode == System.Net.HttpStatusCode.OK ? Alarm.Parse(await r.Content.ReadAsStringAsync()) : null;
+        }
+        catch (Exception ex) { Log($"alarm fetch failed: {url} {ex.Message}"); return; }
+        if (a == null) return;   // a fake or gone alarm can't fire
+        var seen = File.Exists(SeenPath) ? File.ReadAllLines(SeenPath).ToList() : new List<string>();
+        if (!Alarm.Remember(seen, a.Id)) return;
+        File.WriteAllLines(SeenPath, seen);
+        if (a.Level == "needs" || a.Level == "urgent" && Paused) return;   // needs: the phone's job. Pause never mutes critical
+        if (pages.Any(p => p.Alarm?.Id == a.Id)) return;
+        pages.Add(new(new Ev(a.Title, DateTime.Now, DateTime.MaxValue, false, "#fff"), false, false, DateTime.Now, a));
+        DrawPage();
+        SystemSounds.Exclamation.Play();
+    }
+
+    static void Log(string s) { try { File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "glance.log"), $"{DateTime.Now:o} {s}\n"); } catch { } }
 
     Border PageButton(string label, Color bg, double height, Action click)
     {

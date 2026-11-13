@@ -99,6 +99,10 @@ class Prefs(ctx: Context) {
     var startAlarm: Int get() = sp.getInt("startAlarm", 0); set(v) = sp.edit { putInt("startAlarm", v) }
     /** Hidden and silent until this moment (nap, meeting); alerts due meanwhile are dropped. 0 = not paused. */
     var pausedUntil: Long get() = sp.getLong("pausedUntil", 0); set(v) = sp.edit { putLong("pausedUntil", v) }
+    /** Ids of the alarms from other apps that have fired, newest last ([Alarm.remember]), so none fires twice. */
+    var alarmsSeen: List<String>
+        get() = org.json.JSONArray(sp.getString("alarmsSeen", "[]")).let { a -> List(a.length()) { a.getString(it) } }
+        set(v) = sp.edit { putString("alarmsSeen", org.json.JSONArray(v).toString()) }
     /** When an event starts, fill the screen with it (StartScreen), over the lock screen too. */
     var fullScreen: Boolean get() = sp.getBoolean("fullScreen", true); set(v) = sp.edit { putBoolean("fullScreen", v) }
     /** Travel events: look up public transport times (docs/travel.md), leaving [travelBuffer] min to get ready. */

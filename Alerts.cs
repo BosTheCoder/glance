@@ -78,5 +78,39 @@ public static class Sync
 {
     public static string Key(string title, DateTime start) => Sha($"{title}|{new DateTimeOffset(start).ToUnixTimeSeconds() / 60}")[..16];
     public static string Topic(string account) => "glance-" + Sha("glance-sync:" + account.ToLowerInvariant())[..20];
+    /// Where other apps post alarms for this account (see Alarm).
+    public static string AlarmTopic(string account) => "glance-" + Sha("glance-alarm:" + account.ToLowerInvariant())[..20];
     static string Sha(string s) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
+}
+
+/// An alarm another app raised (docs/android.md, "Alarms from other apps"). Level: needs, urgent or critical.
+public record Alarm(string Id, string Level, string Title, string Body, string Open)
+{
+    static readonly string[] Levels = ["needs", "urgent", "critical"];
+
+    /// Only a tailnet URL: anyone can post to an ntfy topic, but only Kelvin's tailnet can serve the alarm behind it.
+    public static bool Trusted(string url) =>
+        Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) && u.Scheme == "https" && u.Host.ToLowerInvariant().EndsWith(".ts.net");
+
+    /// The fetched JSON, or null if it isn't a well-formed alarm. Open is kept only if it's https.
+    public static Alarm? Parse(string json)
+    {
+        try
+        {
+            var j = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+            var id = (string?)j["id"]; var level = (string?)j["level"]; var open = (string?)j["open"] ?? "";
+            if (string.IsNullOrEmpty(id) || !Levels.Contains(level)) return null;
+            return new(id, level!, (string?)j["title"] ?? "", (string?)j["body"] ?? "", open.StartsWith("https://") ? open : "");
+        }
+        catch { return null; }
+    }
+
+    /// Adds [id] to [seen], keeping the last [keep]. False if it was already there: it has fired before.
+    public static bool Remember(List<string> seen, string id, int keep = 100)
+    {
+        if (seen.Contains(id)) return false;
+        seen.Add(id);
+        if (seen.Count > keep) seen.RemoveRange(0, seen.Count - keep);
+        return true;
+    }
 }

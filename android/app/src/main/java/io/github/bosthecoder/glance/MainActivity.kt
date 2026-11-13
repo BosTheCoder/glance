@@ -1,6 +1,7 @@
 package io.github.bosthecoder.glance
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.res.ColorStateList
@@ -172,6 +173,9 @@ class MainActivity : ComponentActivity() {
             permission("Notifications", canNotify(this)) { askPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
         if (Build.VERSION.SDK_INT >= 34 && prefs.fullScreen) permission("Full screen when events start", canFullScreen(this)) {
             overlaySettings.launch(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:$packageName".toUri()))
+        }
+        permission("Alarms through Do Not Disturb", getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted) {
+            overlaySettings.launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
         }
         permission("Change events (revert an old skip)", canWrite(this)) { askPermission.launch(Manifest.permission.WRITE_CALENDAR) }
         permission("Location (for travel times)", canLocate(this)) {

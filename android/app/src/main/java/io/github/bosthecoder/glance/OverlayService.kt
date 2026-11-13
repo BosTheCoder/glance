@@ -223,6 +223,7 @@ class OverlayService : Service() {
     private var events = emptyList<Ev>()
     private var banner: Alert? = null
     private var alarm: Ev? = null   // the start it's buzzing for, like an alarm (Prefs.startAlarm)
+    private var stopAlarms: (() -> Unit)? = null
     private val snoozed = HashMap<Alert, Long>()   // alert -> when it comes back
     private val stopAlarmR = Runnable { stopAlarm() }
     private val vibrator by lazy {
@@ -287,7 +288,7 @@ class OverlayService : Service() {
     }
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
-            "x", "y", "right", "docked", "fadeAfter" -> {}
+            "x", "y", "right", "docked", "fadeAfter", "alarmsSeen" -> {}
             "activeOpacity" -> showForm()
             "cardWidth", "listHeight" -> if (!gripping) { scroll.maxH = listH(); showForm(); update() }
             "view" -> applyMode()
@@ -338,6 +339,7 @@ class OverlayService : Service() {
         runCatching { contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer) }
         prefs.sp.registerOnSharedPreferenceChangeListener(prefListener)
         reload()
+        stopAlarms = Alarms.listen(applicationContext)   // alarms from other apps: always, not only while a page is up
     }
 
     private fun hideRoot(hidden: Boolean) { pageUp = hidden; showRoot() }
@@ -345,6 +347,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         running = false; self = null
+        stopAlarms?.invoke()
         h.removeCallbacksAndMessages(null)
         if (alarm != null) vibrator.cancel()
         io.shutdownNow()
