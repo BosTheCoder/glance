@@ -22,7 +22,7 @@ public partial class MainWindow
 
         m.Items.Add(Action(string.IsNullOrEmpty(s.Hotkey) ? "Hide" : $"Hide\t{s.Hotkey}", ToggleVisible));
         var pause = new MenuItem { Header = "Pause: hide and mute alerts" };
-        foreach (var (label, mins) in new[] { ("30 minutes", 30), ("1 hour", 60), ("2 hours", 120), ("4 hours", 240) })
+        foreach (var (label, mins) in new[] { ("10 minutes", 10), ("30 minutes", 30), ("1 hour", 60), ("2 hours", 120), ("4 hours", 240), ("8 hours", 480) })
             pause.Items.Add(Action(label, () => Pause(mins)));
         m.Items.Add(pause);
         m.Items.Add(Choice("View", new[] { ("Compact: expand on hover", "Compact"), ("Full: always expanded", "Full") }, s.View, v => s.View = v));
