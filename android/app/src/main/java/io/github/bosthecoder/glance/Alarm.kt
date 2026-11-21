@@ -103,11 +103,13 @@ object Alarms {
             .setAutoCancel(true)
         if (a.open.isNotEmpty()) n.setContentIntent(PendingIntent.getActivity(ctx, a.id.hashCode(),
             Intent(Intent.ACTION_VIEW, a.open.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE))
-        if (a.level == "critical") {
-            // Like an alarm clock: the page turns the screen on over the lock screen, and sounds until it's answered.
+        if (a.level != "needs") {
+            // The page turns the screen on over the lock screen, as Windows shows it. Critical also rings like an alarm clock
+            // until it's answered; urgent sounds through its channel instead.
             val i = AlarmScreen.intent(ctx, a)
             val page = PendingIntent.getActivity(ctx, a.id.hashCode(), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            n.setCategory(NotificationCompat.CATEGORY_ALARM).setOngoing(true).setContentIntent(page).setFullScreenIntent(page, true)
+            n.setCategory(NotificationCompat.CATEGORY_ALARM).setFullScreenIntent(page, true)
+            if (a.level == "critical") n.setOngoing(true).setContentIntent(page)
             AlarmScreen.enqueue(i)
             if (ctx.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false) runCatching { ctx.startActivity(i) }
         }
@@ -125,7 +127,7 @@ object Alarms {
             description = "Another app needs you, when you get a moment"
         },
         NotificationChannel("urgent", "Alarms: urgent", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Keeps sounding, through Do Not Disturb, until you tap or swipe it"
+            description = "Fills the screen and keeps sounding, through Do Not Disturb, until you answer it"
             setBypassDnd(true); enableVibration(true)
             setSound(Settings.System.DEFAULT_NOTIFICATION_URI, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT).build())
         },
@@ -137,14 +139,15 @@ object Alarms {
 }
 
 /**
- * The red full-screen page for a critical alarm: title, body, Open and Dismiss. Over the lock screen with the screen
- * on (manifest), the alarm sound and buzz on repeat until one is pressed. Back does nothing. Several queue up.
+ * The full-screen page for an urgent (amber) or critical (red) alarm: title, body, Open and Dismiss. Over the lock screen
+ * with the screen on (manifest). A critical one also rings and buzzes like an alarm clock until one is pressed. Back does
+ * nothing. Several queue up.
  * Answering tells Windows ("alarm:<id>" on the sync topic), and an answer from Windows closes it here.
  */
 class AlarmScreen : Activity() {
     companion object {
         fun intent(ctx: Context, a: Alarm) = Intent(ctx, AlarmScreen::class.java)
-            .putExtra("id", a.id).putExtra("title", a.title).putExtra("body", a.body).putExtra("open", a.open)
+            .putExtra("id", a.id).putExtra("level", a.level).putExtra("title", a.title).putExtra("body", a.body).putExtra("open", a.open)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         /** Main thread only. */
@@ -153,17 +156,18 @@ class AlarmScreen : Activity() {
         private val done = HashSet<String>()   // answered: a full-screen intent arriving late mustn't bring it back
         private fun Intent.id() = getStringExtra("id") ?: ""
 
-        fun enqueue(i: Intent) { if (i.id() !in done && queue.none { it.id() == i.id() }) queue += i; live?.show() }
+        fun enqueue(i: Intent) { if (i.id() !in done && queue.none { it.id() == i.id() }) queue += i; live?.apply { ring(); show() } }
 
         /** Answered here or on Windows: its page and notification go. */
         fun answered(ctx: Context, id: String) {
             done += id
             NotificationManagerCompat.from(ctx).cancel("alarm", id.hashCode())
-            if (queue.removeAll { it.id() == id }) live?.show()
+            if (queue.removeAll { it.id() == id }) live?.apply { ring(); show() }
         }
     }
 
     private var ringtone: Ringtone? = null
+    private var ringing = false
     private val vibrator by lazy {
         if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
         else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
@@ -172,6 +176,14 @@ class AlarmScreen : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         live = this; enqueue(intent); show()
+    }
+
+    /** Ring while a critical one is queued (an urgent page that's up starts ringing if one arrives behind it). */
+    private fun ring() {
+        val critical = queue.any { it.getStringExtra("level") == "critical" }
+        if (!critical && ringing) stopRinging()
+        if (!critical || ringing) return
+        ringing = true
         // Alarm usage: what an alarm clock uses, so it sounds in silent mode and through Do Not Disturb.
         ringtone = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))?.apply {
             audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
@@ -185,19 +197,22 @@ class AlarmScreen : Activity() {
     override fun onStart() { super.onStart(); OverlayService.hide(true) }
     override fun onStop() { OverlayService.hide(false); super.onStop() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); enqueue(intent) }
-    override fun onDestroy() { ringtone?.stop(); vibrator.cancel(); if (live === this) live = null; super.onDestroy() }
+    private fun stopRinging() { ringtone?.stop(); ringtone = null; vibrator.cancel(); ringing = false }
+    override fun onDestroy() { if (ringing) stopRinging(); if (live === this) live = null; super.onDestroy() }
     @Deprecated("Back does nothing: only Open or Dismiss stops the alarm") override fun onBackPressed() {}
 
     private fun show() {
         val i = queue.firstOrNull() ?: return finish()
         val open = i.getStringExtra("open") ?: ""
+        val critical = i.getStringExtra("level") == "critical"
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(0xFF7A0E14.toInt()); setPadding(dp(28), dp(48), dp(28), dp(48))
-            addView(text("⏰  ALARM" + if (queue.size > 1) "  ·  1 OF ${queue.size}" else "", 16f, 0xFFFF8A8A.toInt(), bold = true).apply { letterSpacing = 0.1f })
+            setBackgroundColor(if (critical) 0xFF7A0E14.toInt() else 0xFF0E0E10.toInt()); setPadding(dp(28), dp(48), dp(28), dp(48))
+            addView(text((if (critical) "⏰  ALARM" else "⚠  URGENT") + if (queue.size > 1) "  ·  1 OF ${queue.size}" else "", 16f,
+                if (critical) 0xFFFF8A8A.toInt() else AMBER, bold = true).apply { letterSpacing = 0.1f })
             addView(text(i.getStringExtra("title") ?: "", 40f, Color.WHITE, bold = true).apply { maxLines = 4; setPadding(0, dp(12), 0, dp(8)) })
             addView(text(i.getStringExtra("body") ?: "", 20f, 0xCCFFFFFF.toInt()).apply { maxLines = 8; setPadding(0, 0, 0, dp(36)) })
-            if (open.isNotEmpty()) addView(button("Open", 0xFFD02B35.toInt(), 72) {
+            if (open.isNotEmpty()) addView(button("Open", if (critical) 0xFFD02B35.toInt() else 0xFF9A6310.toInt(), 72) {
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, open.toUri())) }
                 answer(i.id())
             })

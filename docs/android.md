@@ -133,7 +133,7 @@ Glance ignores (and logs) a URL that isn't https on a host ending `.ts.net`. If 
 | Level | Phone | Windows |
 | --- | --- | --- |
 | `needs` | A normal notification; tap it to open `open` in the browser | Nothing |
-| `urgent` | A notification on its own channel that gets through Do Not Disturb (with the Grant above) and keeps sounding and buzzing until you tap or swipe it | The alert page in amber, with **Open** and **Dismiss** |
+| `urgent` | An amber full-screen page, over the lock screen with the screen on, with **Open** and **Dismiss**, plus a notification on its own channel that gets through Do Not Disturb (with the Grant above) and keeps sounding and buzzing until you answer it. Needs "Full screen notifications" allowed, as starts do | The alert page in amber, with **Open** and **Dismiss** |
 | `critical` | A red full-screen page, over the lock screen with the screen on: the title, the body, a big **Open** (opens `open` and closes the page) and **Dismiss**. It sounds and buzzes like an alarm clock (alarm volume, through silent mode and Do Not Disturb) until you press one. Back does nothing | The alert page in red, with **Open** and **Dismiss** |
 
 **Pause** mutes `needs` and `urgent`, never `critical`. **Open** or **Dismiss** on one device closes the page on the other: Glance sends `alarm:<id>` on the account's sync topic, the same relay as [On both devices](#on-both-devices).
