@@ -9,7 +9,7 @@ Glance is a small WPF app on .NET 8, with no NuGet dependencies. It talks to Goo
 ```powershell
 dotnet run -- --demo                # fake events, no Google needed (and one of each alert state)
 dotnet test tests                   # alert logic tests
-dotnet run                          # real calendar: needs client.json in bin\Debug\net8.0-windows\win-x64\, or GLANCE_CLIENT_ID/GLANCE_CLIENT_SECRET set when building
+dotnet run                          # real calendar: needs glance-client.json in bin\Debug\net8.0-windows\win-x64\, or GLANCE_CLIENT_ID/GLANCE_CLIENT_SECRET set when building
 dotnet publish -c Release -o out    # out\Glance.exe, framework-dependent single file
 ```
 
@@ -32,7 +32,7 @@ just demo                           # WSL: same, but starts a --demo copy from %
 | `MainWindow.xaml.cs` | Behaviour: refresh loop, rendering, hover expand/collapse, fade, resize, live settings reload |
 | `MainWindow.Menu.cs` | The right-click menu, rebuilt on every open from `Settings` |
 | `MainWindow.Page.cs` | The big alert page in the middle of the screen: Start now, Snooze, Open event, and answers passed to and from the phone over ntfy.sh. Also alarms from other apps (`ListenAlarms`), always listening |
-| `Settings.cs` | `settings.json` model, themes and colour resolution |
+| `Settings.cs` | `glance.json` model, themes and colour resolution |
 | `GoogleCal.cs` | OAuth for installed apps (loopback + PKCE), token refresh and storage, calendar and event fetch, and moving or cancelling an event |
 | `Native.cs` | P/Invoke for the acrylic backdrop, rounded corners, whole-window alpha, tool-window style and per-monitor work area |
 | `Model.cs` | `Cal` and `Ev` records |

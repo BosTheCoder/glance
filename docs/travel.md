@@ -33,7 +33,7 @@ next public transport options, from TfL's Journey Planner, for getting there by 
 
 No times show if either end is missing, if the two ends are the same place, or if an address has no UK postcode
 (TfL needs a postcode or coordinates). For a place like the gym, put its address on one "Travel: gym" event and every
-other one learns it. On Windows you can also name places in settings.json (`Places`, below).
+other one learns it. On Windows you can also name places in glance.json (`Places`, below).
 
 ## The times
 
@@ -51,7 +51,7 @@ other one learns it. On Windows you can also name places in settings.json (`Plac
 
 ## Settings
 
-| Windows (settings.json) | Android | Default | Does |
+| Windows (glance.json) | Android | Default | Does |
 | --- | --- | --- | --- |
 | `Travel` | Travel times | `true` | Look up times for travel events |
 | `TravelBuffer` | Get-ready time | `5` | Minutes taken off each departure to give the leave time |

@@ -15,8 +15,8 @@ public class NeedsSignIn : Exception { }
 /// Google Calendar over plain HTTP: installed-app OAuth (loopback + PKCE). Read-only.
 public class GoogleCal
 {
-    static string Dir => AppContext.BaseDirectory;
-    static string TokenPath => Path.Combine(Dir, "token.dat");
+    static readonly string TokenPath = Settings.OwnFile("glance-token.dat", "token.dat");
+    static readonly string ClientPath = Settings.OwnFile("glance-client.json", "client.json");
     const string Api = "https://www.googleapis.com/calendar/v3/";
 
     readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
@@ -30,7 +30,7 @@ public class GoogleCal
         try
         {
             // Your own client, if there's one: the JSON Google Cloud Console downloads ({"installed": {...}}) or a flat one.
-            var j = JsonNode.Parse(File.ReadAllText(Path.Combine(Dir, "client.json")))!;
+            var j = JsonNode.Parse(File.ReadAllText(ClientPath))!;
             var c = j["installed"] ?? j;
             id = (string)c["client_id"]!;
             secret = (string)c["client_secret"]!;
@@ -41,7 +41,7 @@ public class GoogleCal
             string? Meta(string key) => typeof(GoogleCal).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
                 .Cast<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value;
             if (Meta("GoogleClientId") is { Length: > 0 } builtId && Meta("GoogleClientSecret") is { Length: > 0 } builtSecret) (id, secret) = (builtId, builtSecret);
-            else ConfigError = "Put client.json (Google OAuth desktop client) next to Glance.exe";
+            else ConfigError = "Put glance-client.json (Google OAuth desktop client) next to Glance.exe";
         }
         try { refresh = Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(TokenPath), null, DataProtectionScope.CurrentUser)); }
         catch { }

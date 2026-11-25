@@ -7,3 +7,7 @@ out/
 glance.log
 tests/bin/
 tests/obj/
+glance-client.json
+glance-token.dat
+glance.json
+glance-alarms-seen.txt

@@ -5,7 +5,7 @@ using System.Windows.Media;
 
 namespace Glance;
 
-/// Everything the user can change, saved as settings.json next to Glance.exe.
+/// Everything the user can change, saved as glance.json next to Glance.exe.
 /// Hand edits are picked up live (see MainWindow's file watcher).
 public class Settings
 {
@@ -56,7 +56,18 @@ public class Settings
     public int BigAlerts { get; set; } = 40;           // starts and reminders also open a page in the middle of the screen, this % of its width; 0 = off
     public DateTime? PausedUntil { get; set; }         // hidden and silent until then (nap, meeting); alerts due meanwhile are dropped
 
-    public static string Path => System.IO.Path.Combine(AppContext.BaseDirectory, "settings.json");
+    public static readonly string Path = OwnFile("glance.json", "settings.json");
+
+    /// A file next to the exe under Glance's own name, so it can share a folder with his other apps (Tickfind kept
+    /// settings.json and token.dat there too until 1.4.2). Moves the file over from the generic name it had before 1.27.
+    /// Tickfind 1.4.2+ never touches those names in a shared folder, so whatever is left under them is Glance's.
+    public static string OwnFile(string name, string oldName)
+    {
+        var path = System.IO.Path.Combine(AppContext.BaseDirectory, name);
+        var old = System.IO.Path.Combine(AppContext.BaseDirectory, oldName);
+        try { if (!File.Exists(path) && File.Exists(old)) File.Move(old, path); } catch { }
+        return path;
+    }
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     public static Settings Load()

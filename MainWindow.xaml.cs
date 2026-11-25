@@ -55,7 +55,7 @@ public partial class MainWindow : Window
     bool headsUp;
     HeadsUp? coming;
     DateTime? headsUpFor, headsUpDismissed;   // the change we last alerted for / had its banner clicked away
-    readonly FileSystemWatcher watcher = new(AppContext.BaseDirectory, "settings.json");
+    readonly FileSystemWatcher watcher = new(AppContext.BaseDirectory, System.IO.Path.GetFileName(Settings.Path));
     // Travel times, per trip (from|to|arrive-by). Options empty = no times, just a link to directions.
     record Trip(List<Journey> Options, string Link, DateTime Fetched, bool Failed, string From, string To, DateTime By);
     readonly Dictionary<string, Trip> trips = new();
@@ -209,7 +209,7 @@ public partial class MainWindow : Window
         NextPanel.SizeChanged += (_, _) => PlaceIdleFrame();
         Root.SizeChanged += (_, _) => PlaceIdleFrame();
 
-        // Hand edits to settings.json (custom colours etc.) apply without a restart.
+        // Hand edits to glance.json (custom colours etc.) apply without a restart.
         watcher.Changed += (_, _) => Dispatcher.InvokeAsync(async () =>
         {
             await Task.Delay(150);   // let the editor finish writing
@@ -334,7 +334,7 @@ public partial class MainWindow : Window
 
     // ---------- look ----------
 
-    /// Push every visual setting onto the window. Called at start, after any menu change and on settings.json edits.
+    /// Push every visual setting onto the window. Called at start, after any menu change and on glance.json edits.
     void ApplyLook()
     {
         var (tint, text) = s.Colors();

@@ -32,11 +32,11 @@ public partial class MainWindow
         m.Items.Add(Toggle("Pin on top", s.Pinned, v => s.Pinned = v));
         m.Items.Add(Toggle("Show in taskbar", s.ShowInTaskbar, v => s.ShowInTaskbar = v));
         var keys = new[] { "Win+Shift+G", "Win+Ctrl+G", "Ctrl+Alt+Shift+G", "Ctrl+Alt+K" }.Select(k => (k, k)).ToList();
-        if (!string.IsNullOrEmpty(s.Hotkey) && !keys.Any(k => k.Item1 == s.Hotkey)) keys.Add((s.Hotkey, s.Hotkey));   // custom one from settings.json
+        if (!string.IsNullOrEmpty(s.Hotkey) && !keys.Any(k => k.Item1 == s.Hotkey)) keys.Add((s.Hotkey, s.Hotkey));   // custom one from glance.json
         keys.Add(("None", ""));
         var hk = Choice(hotkeyOk ? "Hide/show shortcut" : "Hide/show shortcut (taken, pick another)", keys, s.Hotkey ?? "", v => s.Hotkey = v);
         hk.Items.Add(new Separator());
-        hk.Items.Add(Action("Custom… (edit Hotkey in settings.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
+        hk.Items.Add(Action("Custom… (edit Hotkey in glance.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
         m.Items.Add(hk);
         m.Items.Add(Toggle("Start with Windows", StartsWithWindows, v => StartsWithWindows = v));
         m.Items.Add(new Separator());
@@ -60,7 +60,7 @@ public partial class MainWindow
         var theme = Choice("Theme", Settings.Themes.Keys.Select(k => (k, k)), s.Tint == null && s.Text == null ? s.Theme : null,
             v => { s.Theme = v; s.Tint = s.Text = null; });
         theme.Items.Add(new Separator());
-        theme.Items.Add(Action("Custom colours… (edit settings.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
+        theme.Items.Add(Action("Custom colours… (edit glance.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
         m.Items.Add(theme);
         m.Items.Add(Choice("Glass", new[] { ("Clear", "Clear"), ("Frosted", "Frosted"), ("Solid", "Solid") }, s.Glass, v => s.Glass = v));
         m.Items.Add(Choice("Opacity when idle", new[] { 0.25, 0.5, 0.75, 1.0 }.Select(o => ($"{o:P0}", o)), s.IdleOpacity, v => s.IdleOpacity = v));
@@ -82,7 +82,7 @@ public partial class MainWindow
         var travel = new MenuItem { Header = "Travel times" };
         travel.Items.Add(Toggle("For \"Travel\" events", s.Travel, v => { s.Travel = v; _ = LoadTrips(); }));
         travel.Items.Add(Choice("Get-ready time", new[] { ("None", 0), ("3 minutes", 3), ("5 minutes", 5), ("10 minutes", 10) }, s.TravelBuffer, v => s.TravelBuffer = v));
-        travel.Items.Add(Action("Named places… (edit Places in settings.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
+        travel.Items.Add(Action("Named places… (edit Places in glance.json)", () => Process.Start(new ProcessStartInfo(Settings.Path) { UseShellExecute = true })));
         m.Items.Add(travel);
 
         var alerts = new MenuItem { Header = "Alerts" };

@@ -94,7 +94,7 @@ Click an event that's on now or coming up to get the same page for it. Earlier e
 
 <br clear="right">
 
-Every option is also in `settings.json`, and edits to it apply live. See **[docs/settings.md](docs/settings.md)** for the full list, including custom colours.
+Every option is also in `glance.json`, and edits to it apply live. See **[docs/settings.md](docs/settings.md)** for the full list, including custom colours.
 
 ## Develop
 

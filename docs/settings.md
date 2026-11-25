@@ -1,6 +1,6 @@
 # Settings
 
-Everything in the right-click menu is saved to `settings.json` next to `Glance.exe`. The file is watched, so hand edits apply straight away without a restart. **Theme → Custom colours…** opens it in your default editor.
+Everything in the right-click menu is saved to `glance.json` next to `Glance.exe`. The file is watched, so hand edits apply straight away without a restart. **Theme → Custom colours…** opens it in your default editor.
 
 | Key | Default | Meaning |
 | --- | --- | --- |

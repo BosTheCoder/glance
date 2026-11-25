@@ -201,7 +201,7 @@ public partial class MainWindow
     // ---------- alarms from other apps ----------
 
     static readonly HttpClient fetcher = new() { Timeout = TimeSpan.FromSeconds(10) };
-    static string SeenPath => Path.Combine(AppContext.BaseDirectory, "alarms-seen.txt");
+    static readonly string SeenPath = Settings.OwnFile("glance-alarms-seen.txt", "alarms-seen.txt");
 
     /// Always, while Glance runs: alarm URLs posted to the account's alarm topic. Each is fetched from the tailnet and,
     /// if it's urgent or critical, opens the page. Reconnects after a drop; since=10m plus the seen ids means nothing in
