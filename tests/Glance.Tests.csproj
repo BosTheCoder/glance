@@ -11,6 +11,7 @@
     <Compile Include="../Alerts.cs" />
     <Compile Include="../Docking.cs" />
     <Compile Include="../Travel.cs" />
+    <Compile Include="../FocusTime.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

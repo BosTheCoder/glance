@@ -32,6 +32,7 @@ just demo                           # WSL: same, but starts a --demo copy from %
 | `MainWindow.xaml.cs` | Behaviour: refresh loop, rendering, hover expand/collapse, fade, resize, live settings reload |
 | `MainWindow.Menu.cs` | The right-click menu, rebuilt on every open from `Settings` |
 | `MainWindow.Page.cs` | The big alert page in the middle of the screen: Start now, Snooze, Open event, and answers passed to and from the phone over ntfy.sh. Also alarms from other apps (`ListenAlarms`), always listening |
+| `FocusTime.cs`, `TickTick.cs` | Focus time: adding up TickTick focus records per task (pure, tested), and the read-only TickTick sign-in and fetch through its MCP endpoint |
 | `Settings.cs` | `glance.json` model, themes and colour resolution |
 | `GoogleCal.cs` | OAuth for installed apps (loopback + PKCE), token refresh and storage, calendar and event fetch, and moving or cancelling an event |
 | `Native.cs` | P/Invoke for the acrylic backdrop, rounded corners, whole-window alpha, tool-window style and per-monitor work area |

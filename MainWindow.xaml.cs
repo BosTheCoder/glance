@@ -15,6 +15,12 @@ public partial class MainWindow : Window
 {
     Settings s = Settings.Load();
     readonly GoogleCal g = new();
+    readonly TickTick tt = new();
+    List<(string Task, TimeSpan Time)>? focus;   // per task over s.FocusRange; null = not loaded
+    string? focusFor;                            // the range [focus] covers
+    DateTime focusFetched = DateTime.MinValue;
+    string? focusError;
+    bool focusBusy;
     readonly bool demo;
     List<Cal> cals = new();
     List<Ev> events = new();
@@ -258,7 +264,38 @@ public partial class MainWindow : Window
             error = "Offline, showing last known. " + e.Message;
             lastFetch = DateTime.Now.AddSeconds(Math.Min(0, 60 - s.RefreshSeconds));   // retry in about a minute
         }
-        finally { busy = false; Render(); _ = LoadTrips(); }
+        finally { busy = false; Render(); _ = LoadTrips(); _ = LoadFocus(); }
+    }
+
+    /// TickTick focus time for the chosen range, at most every 2 minutes (TickTick allows 300 calls per 5 min across all his tools).
+    async Task LoadFocus(bool signIn = false, bool force = false)
+    {
+        if (!s.Focus || focusBusy) return;
+        if (!force && focusFor == s.FocusRange && DateTime.Now - focusFetched < TimeSpan.FromMinutes(2)) return;
+        focusBusy = true;
+        try
+        {
+            if (demo) { focus = Demo.Focus(s.FocusRange); focusFor = s.FocusRange; focusFetched = DateTime.Now; return; }
+            if (!tt.SignedIn)
+            {
+                if (!signIn) return;
+                focusError = "Waiting for TickTick sign-in in your browser…";
+                Render();
+                await tt.SignIn();
+            }
+            var range = s.FocusRange;
+            focus = FocusTime.Totals(await tt.Focuses(FocusTime.Start(range, DateTime.Now)));
+            focusFor = range;
+            focusFetched = DateTime.Now;
+            focusError = null;
+        }
+        catch (NeedsSignIn) { focus = null; focusError = null; }
+        catch (Exception e)
+        {
+            focusError = "Focus time: " + e.Message;
+            focusFetched = DateTime.Now;   // try again on the next round, not every tick
+        }
+        finally { focusBusy = false; Render(); }
     }
 
     /// The trip for a travel event, if both ends are known (see docs/travel.md).
@@ -399,6 +436,7 @@ public partial class MainWindow : Window
         if (s.AllDay != "List")
             foreach (var e in allDayToday) AllDayPanel.Children.Add(Chip(e, now));
         ShowAllDay();
+        RenderFocus();
 
         var horizon = DateTime.Today.AddDays(s.DaysAhead + 1);
         var timed = events.Where(e => !e.AllDay && e.End > now && e.Start < horizon).OrderBy(e => e.Start).ToList();
@@ -512,6 +550,44 @@ public partial class MainWindow : Window
         sp.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = B(e.Color), Margin = new(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
         sp.Children.Add(new TextBlock { Text = label, FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = s.Width - 60 });
         return new Border { Background = card, CornerRadius = new(9), Padding = new(8, 2, 9, 3), Margin = new(0, 0, 5, 4), Child = sp, ToolTip = label };
+    }
+
+    /// The focus chip: total for the range (click steps Today → Week → Month), and while expanded the top tasks under it.
+    void RenderFocus()
+    {
+        FocusPanel.Children.Clear();
+        FocusPanel.Visibility = s.Focus ? Visibility.Visible : Visibility.Collapsed;
+        if (!s.Focus) return;
+        string label;
+        if (focusError != null && focus == null) label = focusError;
+        else if (!demo && !tt.SignedIn) label = "Sign in to TickTick for focus time";
+        else if (focus == null || focusFor != s.FocusRange) label = $"Focus {FocusTime.Label(s.FocusRange)}  ·  …";
+        else label = $"{FocusTime.Dur(new TimeSpan(focus.Sum(f => f.Time.Ticks)))} focus {FocusTime.Label(s.FocusRange)}";
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(new TextBlock { Text = "\uE916", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 10.5, Margin = new(0, 1, 6, 0), VerticalAlignment = VerticalAlignment.Center });   // Stopwatch
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = s.Width - 60 });
+        var chip = new Border { Background = card, CornerRadius = new(9), Padding = new(8, 2, 9, 3), HorizontalAlignment = HorizontalAlignment.Left, Child = sp, Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = tt.SignedIn || demo ? "Click for today, this week or this month" : "Click to sign in" };
+        chip.MouseLeftButtonDown += async (_, e) =>
+        {
+            e.Handled = true;
+            if (!demo && !tt.SignedIn) { await LoadFocus(signIn: true, force: true); return; }
+            s.FocusRange = FocusTime.NextRange(s.FocusRange);
+            s.Save();
+            Render();
+            await LoadFocus(force: true);
+        };
+        FocusPanel.Children.Add(chip);
+        if (!expanded || focus == null || focusFor != s.FocusRange) return;
+        foreach (var (task, time) in focus.Take(5))
+        {
+            var row = new DockPanel { Margin = new(2, 4, 2, 0), Opacity = 0.75 };
+            var t = Text(FocusTime.Dur(time), 12, 1, new(10, 0, 0, 0));
+            DockPanel.SetDock(t, Dock.Right);
+            row.Children.Add(t);
+            row.Children.Add(Text(task, 12, 1, new(0)));
+            FocusPanel.Children.Add(row);
+        }
     }
 
     void ShowAllDay() => AllDayPanel.Visibility =

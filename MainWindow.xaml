@@ -28,6 +28,8 @@
                 </DockPanel>
                 <StackPanel x:Name="Banners"/>
                 <WrapPanel x:Name="AllDayPanel" Margin="0,0,0,6"/>
+                <!-- TickTick focus time: a chip (click for today / week / month) and, while expanded, time per task -->
+                <StackPanel x:Name="FocusPanel" Margin="0,0,0,6" Visibility="Collapsed"/>
                 <ScrollViewer x:Name="EarlierScroll" Visibility="Collapsed" MaxHeight="150" Margin="0,0,0,8"
                               VerticalScrollBarVisibility="Hidden">
                     <StackPanel x:Name="Earlier"/>

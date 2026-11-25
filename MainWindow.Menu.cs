@@ -78,6 +78,7 @@ public partial class MainWindow
             lastFetch = DateTime.MinValue;   // fetch the new range
         }));
         m.Items.Add(Toggle("24-hour clock", s.Clock24, v => s.Clock24 = v));
+        m.Items.Add(Toggle("TickTick focus time", s.Focus, v => { s.Focus = v; focusFetched = DateTime.MinValue; _ = LoadFocus(signIn: v); }));
 
         var travel = new MenuItem { Header = "Travel times" };
         travel.Items.Add(Toggle("For \"Travel\" events", s.Travel, v => { s.Travel = v; _ = LoadTrips(); }));

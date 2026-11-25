@@ -37,4 +37,10 @@ static class Demo
             E("Football", 72 + 18 - now.Hour, 2, "#F4511E"),
         };
     }
+
+    public static List<(string Task, TimeSpan Time)> Focus(string range)
+    {
+        var k = range switch { "Week" => 4.5, "Month" => 17, _ => 1 };
+        return new() { ("Deep work", TimeSpan.FromMinutes(110 * k)), ("Coding practice", TimeSpan.FromMinutes(50 * k)), ("Reading", TimeSpan.FromMinutes(25 * k)) };
+    }
 }

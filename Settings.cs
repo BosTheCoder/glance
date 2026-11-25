@@ -41,6 +41,8 @@ public class Settings
     public int MaxEvents { get; set; } = 10;        // events in the expanded list, 0 = all
     public int DaysAhead { get; set; } = 7;         // 0 = today only
     public bool Clock24 { get; set; } = true;
+    public bool Focus { get; set; }                 // TickTick focus time as a chip under the clock (needs a TickTick sign-in)
+    public string FocusRange { get; set; } = "Today";   // Today | Week | Month; clicking the chip steps through them
 
     // Travel events: public transport times from TfL (docs/travel.md)
     public bool Travel { get; set; } = true;

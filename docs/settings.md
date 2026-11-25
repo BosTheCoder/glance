@@ -26,6 +26,8 @@ Everything in the right-click menu is saved to `glance.json` next to `Glance.exe
 | `MaxEvents` | `10` | Events in the expanded list. `0` means all |
 | `DaysAhead` | `7` | How far ahead to look. `0` means today only |
 | `Clock24` | `true` | 24-hour times |
+| `Focus` | `false` | Show your TickTick focus time (pomodoros and stopwatch) as a chip under the clock, with time per task while expanded. Turning it on asks you to sign in to TickTick (read-only) |
+| `FocusRange` | `"Today"` | `Today`, `Week` (from Monday) or `Month` (from the 1st). Clicking the chip steps through them |
 | `Travel` | `true` | Public transport times for "Travel" events ([docs/travel.md](travel.md)) |
 | `TravelBuffer` | `5` | Minutes to get ready, taken off each departure to give the leave time |
 | `Places` | `null` | Extra named places for travel events, e.g. `{"Gym": "PureGym, 1 High St, London E16 1AA"}`. They override places learned from your calendar |
