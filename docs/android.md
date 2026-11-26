@@ -82,6 +82,12 @@ The strip shows **Items at the side** rows:
 
 It sits at **Opacity at the side** while you're not touching it. An alert brings it to full opacity and colours its outline (amber, green or blue) without undocking it; the row the alert is about says "▶ Now" or "🔔 in 10m", or turns amber for a heads-up. Drag the strip up or down to move it along the edge, pull it inwards to undock it and carry on dragging, or tap it to bring back the pill (or card in Full view). The strip's text sits clear of the back-gesture zone, so touches on it reach Glance rather than the system.
 
+### Full screen and screen saver
+
+**Settings → Full screen** opens Glance as the whole screen: a big clock and the date, today's all-day events, what's on now with its time left, then up next and the rest of today and tomorrow. It keeps the screen on, so it suits a phone on a stand; back closes it. In landscape the clock sits on the left and the events on the right. It's black, and it shifts a few dp each minute so an OLED screen doesn't burn in.
+
+The same page is also Android's screen saver: **Settings → Use as screen saver** opens the system screen saver settings, where you pick **Glance** and when it starts (while charging, docked, or both). It shows whenever the phone would otherwise go dark while charging.
+
 ## Alerts
 
 The alerts show inside the pill, card or side strip, and each kind has its own colour. Starts also get a pop-up notification (below):
@@ -197,6 +203,7 @@ The release build is shrunk with R8 (`isMinifyEnabled` and `isShrinkResources`),
 | `main/.../Model.kt` | Pure Kotlin, no Android: the `Ev` model, now/next, the side strip's rows, heads-up and its banner wording (`Plan`), where a release docks (`dockSide`), which alerts are due (`AlertTracker`), `isNewer()` for release tags, `dur()` |
 | `main/.../Calendar.kt` | `CalendarContract` queries (calendars, instances, reminders) and `Prefs` |
 | `main/.../OverlayService.kt` | The foreground service and the overlay window: pill, expanded card, side strip, drag/throw-to-dock, alerts |
+| `main/.../Ambient.kt` | The full-screen page (`AmbientView`), shown by `AmbientScreen` (Settings → Full screen) and `AmbientDream` (the system screen saver) |
 | `main/.../StartScreen.kt` | The full-screen page for starts, reminders (blue) and tapped upcoming events: `showWhenLocked` and `turnScreenOn`, opened by the start notification's full-screen intent when locked, or straight from the service when the phone is in use |
 | `main/.../Alarm.kt` | Alarms from other apps: the contract's checks (`Alarm`: tailnet host, parse, seen ids), the always-on listener and notifications (`Alarms`), and the red page (`AlarmScreen`) |
 | `main/.../Actions.kt` | Revert of old moves and skips against the calendar provider, and the action history (`history.json`) |

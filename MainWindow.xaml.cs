@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     DateTime updateChecked = DateTime.MinValue;
     bool busy, hotkeyOk = true;
     bool expanded;   // agenda showing: while hovered, or always in Full view
+    bool wall;       // Full screen view: fills its monitor behind every window, like a wallpaper (ApplyScreen)
     bool hovering;   // mouse is over the widget: full brightness
     bool showEarlier;   // today's finished events opened from the header; closes again when the widget goes idle
     DateTime hoveredSince;   // when it expanded under the mouse; clicks on events count only once it has settled
@@ -80,6 +81,7 @@ public partial class MainWindow : Window
             HwndSource.FromHwnd(hwnd).AddHook((IntPtr h, int msg, IntPtr wp, IntPtr lp, ref bool handled) =>
             {
                 if (msg == Native.WM_HOTKEY) { ToggleVisible(); handled = true; }
+                if (msg == Native.WM_WINDOWPOSCHANGING && wall) Native.StayAtBottom(lp);
                 return IntPtr.Zero;
             });
             ApplyLook();
@@ -131,17 +133,19 @@ public partial class MainWindow : Window
 
         MouseEnter += async (_, _) =>
         {
+            if (wall) return;   // always open, nothing to expand
             collapseDelay.Stop();
             if (s.Docked != null) { hovering = true; FadeTo(1); }   // the strip lights up but stays a strip
             else Expand();
             if (DateTime.Now - lastFetch > TimeSpan.FromSeconds(20)) await Refresh();
         };
-        MouseLeave += (_, _) => { if (!ContextMenu.IsOpen && !Grip.IsDragging && !IdleGrip.IsDragging) collapseDelay.Start(); };
-        ContextMenu.Closed += (_, _) => { if (!IsMouseOver) collapseDelay.Start(); };
+        MouseLeave += (_, _) => { if (!wall && !ContextMenu.IsOpen && !Grip.IsDragging && !IdleGrip.IsDragging) collapseDelay.Start(); };
+        ContextMenu.Closed += (_, _) => { if (!wall && !IsMouseOver) collapseDelay.Start(); };
         ContextMenuOpening += (_, _) => BuildMenu();
         LocationChanged += (_, _) => { if (dragging) dragTrail.Add((Environment.TickCount64, Left, Top)); };
         MouseLeftButtonDown += (_, down) =>
         {
+            if (wall) { if (LinkAt(down.OriginalSource) is string l) Open(down.OriginalSource, l); return; }   // it stays put: a click only opens
             slide.Stop();
             var (x0, y0, downAt) = (Left, Top, DateTime.Now);
             dragTrail.Clear();
@@ -160,10 +164,7 @@ public partial class MainWindow : Window
             // Only in the settled, focused view: a click that lands as the widget is still expanding under the pointer isn't aimed.
             if (s.Docked == null && hovering && downAt - hoveredSince > TimeSpan.FromMilliseconds(500) && Math.Abs(Left - x0) < 4 && Math.Abs(Top - y0) < 4 && LinkAt(down.OriginalSource) is string link)
             {
-                // A click (not a drag) on an event on now or coming up opens its page (start it now, snooze, open);
-                // on an earlier event or a travel time it opens the link.
-                if (EventAt(down.OriginalSource) is { AllDay: false } ev && ev.End > DateTime.Now) ShowPage(ev, soft: ev.Start > DateTime.Now, bell: false);
-                else Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });
+                Open(down.OriginalSource, link);
                 return;
             }
             else if (s.Docked switch { "Left" => Left < wa.Left + 60, "Right" => Left + ActualWidth > wa.Right - 60, _ => Top < wa.Top + 60 })
@@ -228,8 +229,17 @@ public partial class MainWindow : Window
         watcher.EnableRaisingEvents = true;
     }
 
+    /// A click (not a drag) on an event on now or coming up opens its page (start it now, snooze, open);
+    /// on an earlier event or a travel time it opens the link.
+    void Open(object source, string link)
+    {
+        if (EventAt(source) is { AllDay: false } ev && ev.End > DateTime.Now) ShowPage(ev, soft: ev.Start > DateTime.Now, bell: false);
+        else Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });
+    }
+
     void PlaceOnScreen()
     {
+        if (wall) return;
         // Saved spot if it's still on a monitor, else top-right of the primary screen.
         var wa = SystemParameters.WorkArea;
         bool okX = s.Left is double l && l >= SystemParameters.VirtualScreenLeft && l < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 40;
@@ -379,18 +389,50 @@ public partial class MainWindow : Window
         Foreground = new SolidColorBrush(text);
         card = new SolidColorBrush(Color.FromArgb(0x1C, text.R, text.G, text.B));
         track = new SolidColorBrush(Color.FromArgb(0x33, text.R, text.G, text.B));
-        Topmost = s.Pinned;
+        Topmost = s.Pinned && s.View != "Screen";
         ShowInTaskbar = s.ShowInTaskbar;
         if (hwnd != IntPtr.Zero)
         {
             Native.DarkBackdrop(hwnd, 0.299 * tint.R + 0.587 * tint.G + 0.114 * tint.B < 128);
-            Native.ToolWindow(hwnd, !s.ShowInTaskbar);
+            Native.ToolWindow(hwnd, !s.ShowInTaskbar || s.View == "Screen");
             hotkeyOk = Native.Hotkey(hwnd, s.Hotkey);
         }
+        ApplyScreen();
+        Shell.Background = wall ? Root.Background : Brushes.Transparent;
         ApplyView();
         if (!hovering) FadeTo(IdleOpacity());
         ApplySize();
         Render();
+    }
+
+    /// Full screen view on or off. On, the window covers the whole monitor it's on and stays behind every other window,
+    /// like a live wallpaper, with the widget large in the middle. Off, it goes back to where it was.
+    void ApplyScreen()
+    {
+        var on = s.View == "Screen" && hwnd != IntPtr.Zero;
+        if (on == wall) return;
+        wall = on;
+        Grip.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        Root.VerticalAlignment = on ? VerticalAlignment.Center : VerticalAlignment.Stretch;
+        Root.HorizontalAlignment = on ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        if (on)
+        {
+            collapseDelay.Stop();
+            if (hovering) Collapse();
+            if (s.Docked != null) { s.Docked = null; s.Save(); ApplyDock(); }
+            // The work area, not the whole monitor: a window covering the taskbar counts as a full-screen app, and Windows
+            // would hide the taskbar and hold notifications whenever you clicked it.
+            var m = Native.WorkArea(this, hwnd);
+            SizeToContent = SizeToContent.Manual;
+            (Left, Top, Width, Height) = (m.Left, m.Top, m.Width, m.Height);
+            Native.ToBottom(hwnd);
+        }
+        else
+        {
+            ClearValue(WidthProperty); ClearValue(HeightProperty);
+            SizeToContent = SizeToContent.WidthAndHeight;
+            PlaceOnScreen();
+        }
     }
 
     double IdleWidth() => Math.Min(s.IdleWidth ?? s.Width, s.Width);
@@ -400,6 +442,13 @@ public partial class MainWindow : Window
         Root.Width = s.Docked switch { null => expanded ? s.Width : IdleWidth(), "Top" => double.NaN, _ => StripWidth };
         Zoom.ScaleX = Zoom.ScaleY = s.Scale;
         Scroll.MaxHeight = s.ListHeight;
+        if (wall)
+        {
+            // Laid out on a 780-high page whatever the screen, so it reads from across the room and still fits.
+            Root.Width = Math.Max(s.Width, 420);
+            Zoom.ScaleX = Zoom.ScaleY = s.Scale * Height / 780;
+            Scroll.MaxHeight = 330;
+        }
     }
 
     // ---------- view ----------
@@ -410,7 +459,15 @@ public partial class MainWindow : Window
     {
         var now = DateTime.Now;
         if (s.PausedUntil <= now) { s.PausedUntil = null; s.Save(); Show(); }   // pause is over: back, and alerts on again
-        Clock.Text = $"{Time(now)}  ·  {now:ddd d MMM}";
+        Clock.Inlines.Clear();
+        if (wall)
+        {
+            // Full screen: a big clock, the date beside it
+            Clock.Opacity = 0.9;
+            Clock.Inlines.Add(new System.Windows.Documents.Run(Time(now)) { FontSize = 54, FontWeight = FontWeights.Light });
+            Clock.Inlines.Add(new System.Windows.Documents.Run($"   {now:dddd d MMMM}") { FontSize = 16 });
+        }
+        else { Clock.Opacity = 0.6; Clock.Text = $"{Time(now)}  ·  {now:ddd d MMM}"; }
         Pin.Text = s.Pinned ? "" : "";
         NowPanel.Children.Clear(); NextPanel.Children.Clear(); Agenda.Children.Clear(); AllDayPanel.Children.Clear();
 
@@ -832,11 +889,11 @@ public partial class MainWindow : Window
     /// Full view keeps the agenda open all the time; Compact only opens it while hovered.
     void ApplyView()
     {
-        expanded = hovering || s.View == "Full";
+        expanded = hovering || s.View != "Compact";
         Scroll.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         ShowAllDay();
         ApplySize();
-        IdleLayer.Visibility = hovering && s.View != "Full" && s.Docked == null ? Visibility.Visible : Visibility.Collapsed;
+        IdleLayer.Visibility = hovering && s.View == "Compact" && s.Docked == null ? Visibility.Visible : Visibility.Collapsed;
         PlaceIdleFrame();
     }
 
@@ -870,7 +927,7 @@ public partial class MainWindow : Window
         // Narrower when idle and on the right half of the screen: grow leftwards, so the right edge stays put.
         var wa0 = Native.WorkArea(this, hwnd);
         var grow = (s.Width - IdleWidth()) * s.Scale;
-        if (grow > 0 && widthShift == 0 && s.View != "Full" && Left + ActualWidth / 2 > (wa0.Left + wa0.Right) / 2) { widthShift = grow; Left -= grow; }
+        if (grow > 0 && widthShift == 0 && s.View == "Compact" && Left + ActualWidth / 2 > (wa0.Left + wa0.Right) / 2) { widthShift = grow; Left -= grow; }
         KeepOnScreen();
     }
 
@@ -895,7 +952,7 @@ public partial class MainWindow : Window
         // Back to the idle width; on the right half of the screen keep the right edge where it is.
         var wa = Native.WorkArea(this, hwnd);
         var shrink = (s.Width - IdleWidth()) * s.Scale;
-        if (s.View != "Full" && shrink > 0 && (widthShift != 0 || Left + ActualWidth / 2 > (wa.Left + wa.Right) / 2)) Left += shrink;
+        if (s.View == "Compact" && shrink > 0 && (widthShift != 0 || Left + ActualWidth / 2 > (wa.Left + wa.Right) / 2)) Left += shrink;
         widthShift = 0;
         FadeTo(IdleOpacity());
     }
@@ -933,6 +990,7 @@ public partial class MainWindow : Window
     /// Idle is see-through, but an unread alert keeps it fully lit and a change coming up keeps it mostly lit.
     double IdleOpacity()
     {
+        if (wall) return 1;
         var idle = s.Docked != null ? s.DockOpacity : s.IdleOpacity;
         return banners.Count > 0 ? 1 : headsUp ? Math.Max(idle, 0.85) : idle;
     }
@@ -945,7 +1003,7 @@ public partial class MainWindow : Window
     {
         bool Wants(string setting) => setting == "All" || setting == "Reminders" && kind != AlertKind.Starting;
         if (Wants(s.Sound)) SystemSounds.Asterisk.Play();
-        if (Wants(s.Shake) && IsVisible && !dragging && !slide.IsEnabled && !shake.IsEnabled)
+        if (Wants(s.Shake) && IsVisible && !wall && !dragging && !slide.IsEnabled && !shake.IsEnabled)
         {
             shakeFrom = Left; shakeStart = Environment.TickCount64;
             shake.Start();

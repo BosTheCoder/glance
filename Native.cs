@@ -80,4 +80,19 @@ static class Native
         var m = PresentationSource.FromVisual(w)!.CompositionTarget!.TransformFromDevice;
         return new Rect(m.Transform(new Point(mi.Work.L, mi.Work.T)), m.Transform(new Point(mi.Work.R, mi.Work.B)));
     }
+
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    public const int WM_WINDOWPOSCHANGING = 0x46;
+
+    /// Behind every other window, like the desktop wallpaper (SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE).
+    public static void ToBottom(IntPtr hwnd) => SetWindowPos(hwnd, (IntPtr)1, 0, 0, 0, 0, 0x2 | 0x1 | 0x10);
+
+    /// In WM_WINDOWPOSCHANGING: whatever the move, keep the window at the bottom (WINDOWPOS.hwndInsertAfter = HWND_BOTTOM,
+    /// and drop SWP_NOZORDER so that counts). Clicking it would otherwise bring it up over your windows.
+    public static void StayAtBottom(IntPtr windowPos)
+    {
+        Marshal.WriteIntPtr(windowPos, IntPtr.Size, (IntPtr)1);
+        var flags = 2 * IntPtr.Size + 16;
+        Marshal.WriteInt32(windowPos, flags, Marshal.ReadInt32(windowPos, flags) & ~0x4);
+    }
 }

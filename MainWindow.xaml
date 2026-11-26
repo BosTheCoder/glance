@@ -11,7 +11,7 @@
     <Window.ContextMenu>
         <ContextMenu/>
     </Window.ContextMenu>
-    <Grid>
+    <Grid x:Name="Shell">
         <Border x:Name="Root" Width="300" Padding="14,10,14,12" CornerRadius="8" BorderThickness="1" BorderBrush="Transparent">
             <Border.LayoutTransform>
                 <ScaleTransform x:Name="Zoom"/>

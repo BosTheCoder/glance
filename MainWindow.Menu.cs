@@ -25,7 +25,7 @@ public partial class MainWindow
         foreach (var (label, mins) in new[] { ("10 minutes", 10), ("30 minutes", 30), ("1 hour", 60), ("2 hours", 120), ("4 hours", 240), ("8 hours", 480) })
             pause.Items.Add(Action(label, () => Pause(mins)));
         m.Items.Add(pause);
-        m.Items.Add(Choice("View", new[] { ("Compact: expand on hover", "Compact"), ("Full: always expanded", "Full") }, s.View, v => s.View = v));
+        m.Items.Add(Choice("View", new[] { ("Compact: expand on hover", "Compact"), ("Full: always expanded", "Full"), ("Full screen: behind your windows, like a wallpaper", "Screen") }, s.View, v => s.View = v));
         m.Items.Add(s.Docked == null
             ? Action("Move to the side", () => { var wa = Native.WorkArea(this, hwnd); DockTo(Left + ActualWidth / 2 < (wa.Left + wa.Right) / 2 ? "Left" : "Right"); })
             : Action("Bring back from the side", Undock));

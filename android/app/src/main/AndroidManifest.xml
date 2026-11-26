@@ -43,6 +43,16 @@
 
         <activity android:name=".HistoryActivity" android:exported="false" />
 
+        <!-- Full screen Glance: from the app, and as Android's screen saver (Ambient.kt) -->
+        <activity android:name=".AmbientScreen" android:exported="false" android:excludeFromRecents="true" />
+        <service android:name=".AmbientDream" android:exported="true" android:label="Glance"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".OverlayService"
             android:exported="false"

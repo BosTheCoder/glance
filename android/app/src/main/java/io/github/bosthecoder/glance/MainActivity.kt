@@ -242,6 +242,10 @@ class MainActivity : ComponentActivity() {
             }
             list.postDelayed({ build() }, 300)
         })
+        list.addView(button("Full screen", 0xFF1A1A1E.toInt()) { startActivity(Intent(this, AmbientScreen::class.java)) })
+        list.addView(button("Use as screen saver (while charging)", 0xFF1A1A1E.toInt()) {
+            runCatching { startActivity(Intent(Settings.ACTION_DREAM_SETTINGS)) }.onFailure { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) }
+        })
         list.addView(text("Tap the pill to expand it; drag the open card by its clock. It stays wherever you drop it. Pinch the pill to resize it: sideways for width, up and down for Up next rows. Flick it at an edge to dock it as a side strip, tap the strip to bring it back. Long-press anywhere for this screen; hold a travel time for its train.", 12f, 0x80FFFFFF.toInt()).apply {
             maxLines = 8; setPadding(0, dp(10), 0, 0)
         })

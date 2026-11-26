@@ -21,7 +21,7 @@ Everything in the right-click menu is saved to `glance.json` next to `Glance.exe
 | `Hotkey` | `"Win+Shift+G"` | Global hide/show shortcut. Modifiers are `Ctrl`, `Alt`, `Shift` and `Win`, plus any key name (`G`, `Space`, `F9`, `1`). `""` means none. If another app already owns it, the widget says so and you can pick another one |
 | `Calendars` | `null` | Calendar IDs to show. `null` means the ones ticked in Google Calendar |
 | `AllDay` | `"Always"` | Today's all-day events: `Always` (chips under the clock), `Hover` (chips only while expanded) or `List` (rows at the top of the agenda) |
-| `View` | `"Compact"` | `Compact` opens the agenda on hover. `Full` keeps it open all the time, which is handy on a spare screen. Idle fading still applies |
+| `View` | `"Compact"` | `Compact` opens the agenda on hover. `Full` keeps it open all the time, which is handy on a spare screen. Idle fading still applies. `Screen` fills the monitor it is on (above the taskbar) behind every other window, like a live wallpaper: a big clock, the agenda always open, no fading, no dragging. Pick another view to put it back where it was |
 | `NextCount` | `1` | Upcoming events shown under "Next" (1–7) |
 | `MaxEvents` | `10` | Events in the expanded list. `0` means all |
 | `DaysAhead` | `7` | How far ahead to look. `0` means today only |
